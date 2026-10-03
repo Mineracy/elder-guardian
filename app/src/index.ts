@@ -41,7 +41,18 @@ app.get('/', (c) => {
 })
 
 app.post('/api/form', async (c) => {
-  const formData = await c.req.parseBody()
+  let formData: Record<string, unknown> = {}
+
+  try {
+    formData = await c.req.parseBody()
+  } catch {
+    try {
+      formData = await c.req.json()
+    } catch {
+      formData = {}
+    }
+  }
+
   const name = String(formData.name ?? 'Friend')
   const message = String(formData.message ?? 'No message provided')
 

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hono Demo</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: sans-serif;
+        background: #f7f7f7;
+        color: #1f2937;
+      }
+      .container {
+        width: 320px;
+        padding: 16px;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+      input,
+      textarea,
+      button {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        margin-bottom: 12px;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        font: inherit;
+      }
+      button {
+        background: #2563eb;
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      pre {
+        background: #111827;
+        color: #f9fafb;
+        padding: 10px;
+        border-radius: 8px;
+        white-space: pre-wrap;
+        font-size: 11px;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Send to Hono</h2>
+      <form id="hono-form">
+        <label>
+          Name
+          <input type="text" name="name" value="Extension User" required />
+        </label>
+
+        <label>
+          Message
+          <textarea name="message" rows="4" required>Message from the browser extension</textarea>
+        </label>
+
+        <button type="submit">Send</button>
+      </form>
+
+      <h3>Response</h3>
+      <pre id="response">Waiting for a response…</pre>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
