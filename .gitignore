@@ -1,0 +1,15 @@
+# IntelliJ
+.idea/
+*.iml
+*.iws
+out/
+
+# Maven
+target/
+
+# Gradle
+.gradle/
+build/
+
+# OS
+.DS_Store
