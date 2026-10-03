@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Elder Guardian Extension",
+  "version": "1.0.0",
+  "description": "Flags fake tech-support lockouts and suspicious downloads for caregivers.",
+  "permissions": [
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
