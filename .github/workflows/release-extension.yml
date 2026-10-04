@@ -1,0 +1,40 @@
+name: Release Elder Guardian Extension
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  package-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set release tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "RELEASE_TAG=v${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build extension zip
+        run: |
+          mkdir -p dist
+          zip -r "dist/elder-guardian-extension-${RELEASE_TAG}.zip" extension
+          ls -lh dist
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Elder Guardian Extension ${{ env.RELEASE_TAG }}
+          files: dist/*.zip
+          generate_release_notes: true
