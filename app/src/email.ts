@@ -3,6 +3,37 @@ import type { Bindings } from './types'
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`)
 
+async function sendEmail(
+  env: Bindings,
+  msg: { to: string; subject: string; text: string; html: string },
+) {
+  if (!env.RESEND_API_KEY) {
+    console.log(`[email:dev] to=${msg.to}\n${msg.subject}\n${msg.text}`)
+    return
+  }
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: env.EMAIL_FROM ?? 'Guardian <onboarding@resend.dev>',
+      to: [msg.to],
+      subject: msg.subject,
+      text: msg.text,
+      html: msg.html,
+    }),
+  })
+  if (!res.ok) throw new Error(`Email provider responded ${res.status}: ${await res.text()}`)
+}
+
+export function sendVerificationEmail(env: Bindings, to: string, verifyUrl: string) {
+  return sendEmail(env, {
+    to,
+    subject: 'Confirm your email to become a trusted guardian',
+    text: `Confirm your email address so you can review requests for the people you protect:\n${verifyUrl}\n\nIf you didn't create this account, ignore this email.`,
+    html: `<p>Confirm your email address so you can review requests for the people you protect.</p><p><a href="${escapeHtml(verifyUrl)}">Confirm my email</a></p><p>If you didn't create this account, ignore this email.</p>`,
+  })
+}
+
 export async function sendReviewEmail(
   env: Bindings,
   opts: {
@@ -23,26 +54,5 @@ export async function sendReviewEmail(
 <p><a href="${escapeHtml(opts.reviewUrl)}" style="display:inline-block;padding:12px 20px;background:#1d4ed8;color:#fff;border-radius:8px;text-decoration:none">Review and decide</a></p>
 <p>They are waiting on your answer.</p>`
 
-  if (!env.RESEND_API_KEY) {
-    console.log(`[email:dev] to=${opts.to}\n${subject}\n${text}`)
-    return
-  }
-
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: env.EMAIL_FROM ?? 'Guardian <onboarding@resend.dev>',
-      to: [opts.to],
-      subject,
-      text,
-      html,
-    }),
-  })
-  if (!res.ok) {
-    throw new Error(`Email provider responded ${res.status}: ${await res.text()}`)
-  }
+  await sendEmail(env, { to: opts.to, subject, text, html })
 }

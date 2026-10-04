@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono'
-import type { AppEnv } from './types'
+import { sendVerificationEmail } from './email'
+import type { AppEnv, AuthedUser, Bindings } from './types'
 
 const PBKDF2_ITERATIONS = 100_000 // Workers' Web Crypto caps PBKDF2 at 100k
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -61,14 +62,27 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!token) return c.json({ error: 'Not signed in' }, 401)
 
   const row = await c.env.DB.prepare(
-    `SELECT u.id, u.email, u.role FROM sessions s
+    `SELECT u.id, u.email, u.role, u.email_verified FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > ?`,
   )
     .bind(await sha256Hex(token), Date.now())
-    .first<{ id: string; email: string; role: 'protected' | 'trusted' }>()
+    .first<AuthedUser>()
 
   if (!row) return c.json({ error: 'Session expired' }, 401)
   c.set('user', row)
   await next()
+}
+
+const VERIFY_TTL_MS = 24 * 60 * 60 * 1000
+
+/** Emails a confirmation link. Returns the link so dev mode can surface it. */
+export async function sendVerification(env: Bindings, requestUrl: string, user: { id: string; email: string }) {
+  const token = randomToken()
+  await env.DB.prepare('INSERT INTO email_verifications (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
+    .bind(await sha256Hex(token), user.id, Date.now() + VERIFY_TTL_MS)
+    .run()
+  const url = `${env.APP_BASE_URL ?? new URL(requestUrl).origin}/verify/${token}`
+  await sendVerificationEmail(env, user.email, url).catch((e) => console.error('[email] failed:', e))
+  return url
 }

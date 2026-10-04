@@ -5,11 +5,18 @@ export type Bindings = {
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
   APP_BASE_URL?: string
+  // Origin of the React website (CORS + post-verification redirect)
+  WEB_URL?: string
   // "dev" logs review links to the console and echoes them in API responses
   ENVIRONMENT?: string
 }
 
-export type AuthedUser = { id: string; email: string; role: 'protected' | 'trusted' }
+export type AuthedUser = {
+  id: string
+  email: string
+  role: 'protected' | 'trusted'
+  email_verified: number
+}
 
 export type Variables = { user: AuthedUser }
 
