@@ -48,18 +48,27 @@ export async function authenticate(mode, email, password, role) {
 }
 
 export async function signOut() {
-  await chrome.storage.local.remove(['session', 'whitelist', 'passes']);
+  await chrome.storage.local.remove(['session', 'whitelist', 'whitelistFetchedAt', 'passes', 'policy', 'txApproved']);
 }
 
 // Guardians can edit the whitelist at any time, so the local copy is refreshed regularly.
 export const WHITELIST_STALE_MS = 30 * 1000;
 
+// The guardian's transaction limit; the transaction watcher (transactions.js) reads it from storage.
+export async function refreshPolicy() {
+  const { transactionLimit } = await apiFetch('/api/policy');
+  const backendHost = hostOf(await resolveApiBase());
+  await chrome.storage.local.set({ policy: { transactionLimit, backendHost } });
+}
+
+// Refreshes everything the guardian controls (whitelist and policy) so edits reach this browser quickly.
 export async function refreshWhitelist() {
   const { domains } = await apiFetch('/api/whitelist');
   await chrome.storage.local.set({
     whitelist: domains.map((d) => d.domain),
     whitelistFetchedAt: Date.now(),
   });
+  await refreshPolicy().catch(() => {});
   return domains;
 }
 

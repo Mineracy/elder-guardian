@@ -43,13 +43,16 @@ export async function sendReviewEmail(
     reviewUrl: string
     targetUrl: string
     threatLevel: string
+    amountCents?: number
   },
 ) {
+  const amount = opts.amountCents ? `$${(opts.amountCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null
   const subject = `Action needed: ${opts.protectedEmail} may be at risk`
-  const text = `Hi,\n\nWe think ${opts.protectedEmail} is at risk.\n\n${opts.alertText}\n\nLink they tried to open: ${opts.targetUrl}\nThreat level: ${opts.threatLevel}\n\nPlease review it and choose Allow or Deny:\n${opts.reviewUrl}\n\nThey are waiting on your answer.`
+  const text = `Hi,\n\nWe think ${opts.protectedEmail} is at risk.\n\n${opts.alertText}\n\n${amount ? `Transaction amount: ${amount}\n` : ''}Link they tried to open: ${opts.targetUrl}\nThreat level: ${opts.threatLevel}\n\nPlease review it and choose Allow or Deny:\n${opts.reviewUrl}\n\nThey are waiting on your answer.`
   const html = `<p>Hi,</p>
 <p>We think <strong>${escapeHtml(opts.protectedEmail)}</strong> is at risk.</p>
 <p>${escapeHtml(opts.alertText)}</p>
+${amount ? `<p>Transaction amount: <strong>${escapeHtml(amount)}</strong></p>` : ''}
 <p>Link they tried to open: <code>${escapeHtml(opts.targetUrl)}</code><br>Threat level: <strong>${escapeHtml(opts.threatLevel)}</strong></p>
 <p><a href="${escapeHtml(opts.reviewUrl)}" style="display:inline-block;padding:12px 20px;background:#1d4ed8;color:#fff;border-radius:8px;text-decoration:none">Review and decide</a></p>
 <p>They are waiting on your answer.</p>`

@@ -5,6 +5,7 @@ import { resolveIntervention } from '../resolve'
 import type { AppEnv } from '../types'
 
 const ACTIVITY_LIMIT = 50
+const MAX_LIMIT_DOLLARS = 10_000_000
 
 const guardian = new Hono<AppEnv>()
 guardian.use('*', requireAuth)
@@ -38,11 +39,12 @@ guardian.get('/dashboard', async (c) => {
   const now = Date.now()
   const { results: people } = await db
     .prepare(
-      `SELECT u.id, u.email FROM contact_pairings p JOIN users u ON u.id = p.protected_user_id
+      `SELECT u.id, u.email, u.transaction_limit_cents, u.transaction_limit_action
+       FROM contact_pairings p JOIN users u ON u.id = p.protected_user_id
        WHERE p.trusted_email = ? ORDER BY u.email`,
     )
     .bind(c.get('user').email)
-    .all<{ id: string; email: string }>()
+    .all<{ id: string; email: string; transaction_limit_cents: number | null; transaction_limit_action: string }>()
 
   const protectees = await Promise.all(
     people.map(async (p) => {
@@ -50,19 +52,20 @@ guardian.get('/dashboard', async (c) => {
         db
           .prepare(
             `SELECT id, target_url, domain, trigger_type, threat_level, risk_summary, status, created_at, expires_at,
-                    signals, used_fallback
+                    signals, used_fallback, amount_cents
              FROM intervention_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
           )
           .bind(p.id, ACTIVITY_LIMIT)
-          .all<{ status: string; expires_at: number; signals: string | null; used_fallback: number }>(),
+          .all<{ status: string; expires_at: number; signals: string | null; used_fallback: number; amount_cents: number | null }>(),
         db
           .prepare('SELECT domain FROM whitelist_domains WHERE user_id = ? ORDER BY domain')
           .bind(p.id)
           .all<{ domain: string }>(),
       ])
       // Expired requests are effectively denied (see interventions.ts), so don't offer Allow on them.
-      const items = activity.results.map(({ signals, used_fallback, ...a }) => ({
+      const items = activity.results.map(({ signals, used_fallback, amount_cents, ...a }) => ({
         ...a,
+        amount: amount_cents === null ? null : amount_cents / 100,
         status: a.status === 'pending' && a.expires_at < now ? 'denied' : a.status,
         signals: parseSignals(signals),
         ai_fallback: used_fallback === 1,
@@ -70,6 +73,10 @@ guardian.get('/dashboard', async (c) => {
       return {
         id: p.id,
         email: p.email,
+        transactionLimit:
+          p.transaction_limit_cents === null
+            ? null
+            : { amount: p.transaction_limit_cents / 100, action: p.transaction_limit_action },
         pendingCount: items.filter((a) => a.status === 'pending').length,
         activity: items,
         whitelist: whitelist.results.map((w) => w.domain),
@@ -99,6 +106,34 @@ guardian.post('/interventions/:id/decision', async (c) => {
     body.addToWhitelist === true,
   )
   return c.json({ status })
+})
+
+/** Set (or clear, with amount null) the per-transaction limit; above it the extension warns or holds the payment. */
+guardian.put('/protectees/:id/transaction-limit', async (c) => {
+  const db = c.env.DB
+  const protectedId = c.req.param('id')
+  if (!(await isPaired(db, protectedId, c.get('user').email))) return c.json({ error: 'Not found' }, 404)
+
+  const body = await c.req.json().catch(() => ({}))
+  if (body.amount === null) {
+    await db.prepare('UPDATE users SET transaction_limit_cents = NULL WHERE id = ?').bind(protectedId).run()
+    return c.json({ ok: true, transactionLimit: null })
+  }
+
+  const dollars = Number(body.amount)
+  if (typeof body.amount === 'boolean' || body.amount === '' || !Number.isFinite(dollars) || dollars <= 0 || dollars > MAX_LIMIT_DOLLARS) {
+    return c.json({ error: `Enter an amount between $0.01 and $${MAX_LIMIT_DOLLARS.toLocaleString('en-US')}` }, 400)
+  }
+  if (body.action !== 'approve' && body.action !== 'warn') {
+    return c.json({ error: 'action must be "approve" or "warn"' }, 400)
+  }
+
+  const cents = Math.round(dollars * 100)
+  await db
+    .prepare('UPDATE users SET transaction_limit_cents = ?, transaction_limit_action = ? WHERE id = ?')
+    .bind(cents, body.action, protectedId)
+    .run()
+  return c.json({ ok: true, transactionLimit: { amount: cents / 100, action: body.action } })
 })
 
 /** Guardians curate the whitelist: it is the only way a site becomes trusted without a per-visit approval. */

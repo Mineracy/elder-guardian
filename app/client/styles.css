@@ -78,3 +78,10 @@ input[type=email],input[type=password],input[type=text]{font:inherit;padding:10p
   .person-actions .btn{width:100%}
   .site-header nav a:not(.btn){display:none}
 }
+
+.limit{border:1px solid var(--border);border-radius:12px;padding:4px 16px 12px;margin:12px 0}
+.limit-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;align-items:end}
+.limit-form input,.limit-form select{width:100%}
+.limit-form .row{grid-column:1/-1}
+select{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
+.amount{margin:8px 0 0}

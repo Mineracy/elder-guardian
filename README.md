@@ -27,6 +27,7 @@ The extension holds a page or download when it sees any of these (then the backe
 - **Page content**, on every site including allowed ones: fake tech-support lockouts, gift-card / crypto / wire payment
   demands, fake government or police threats, fake prizes, "verify your account" pages with a password box, password or
   card fields on an unencrypted (`http`) page, and card checkouts of $1,000 or more.
+- **Transactions over the guardian's limit** (see below).
 - **Downloads**: remote-access tools (AnyDesk, TeamViewer, ...) anywhere, and program installers (`.exe`, `.msi`, `.dmg`, ...)
   from sites that aren't whitelisted.
 
@@ -35,6 +36,16 @@ international look-alike characters, raw IP addresses, `@` tricks, link shortene
 endings (`.xyz`, `.top`, ...), login-style addresses, unencrypted links. These feed Gemini and set a **minimum threat
 level**, so a clear scam is never rated low, even if the AI is unavailable. Guardians see the red flags and whether the AI
 summary was a fallback.
+
+**Transaction limit.** On the dashboard a guardian sets, per protected person, a dollar limit and what happens above it:
+*require my approval* (the payment is held behind an "Awaiting verification" screen until the guardian approves, exactly like
+a blocked site) or *show a warning only* (the person can cancel or continue). `extension/src/transactions.js` runs in every
+frame, finds the amount the person typed (or the amount in a confirmation dialog) next to a Send / Pay / Transfer / Confirm
+button, and compares it to the limit; it doesn't depend on any one site's markup. An approved amount isn't asked about again
+for 15 minutes on that site. Guardians see the amount in the activity log and review email. Remember to whitelist the bank's
+domain (for the NGPF demo: `ngpf.org`), or the site itself is held first. To see what the detector sees on a page, run
+`chrome.storage.local.set({ debugTx: true })` in the extension's service-worker console and watch the page console for
+`[guardian:tx]` lines. Limits are enforced by the extension, so they stop mistakes and scams, not someone who removes the extension.
 
 Guardians can **add and remove whitelist entries** from the dashboard; the extension picks changes up within about a
 minute (and immediately before it would block a site).

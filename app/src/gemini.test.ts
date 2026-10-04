@@ -114,3 +114,19 @@ test('reports a missing key without calling Gemini', async () => {
   })
   assert.equal(bodies.length, 0)
 })
+
+test('transaction requests mention the amount and limit, in the AI prompt and in the fallback', async () => {
+  const txCtx = { ...ctx, targetUrl: 'https://www.ngpf.org/bank-sim/', domain: 'ngpf.org', triggerType: 'LARGE_TRANSACTION', signals: [], amountCents: 80000, limitCents: 50000 }
+  const bodies = await withFetch([ok(JSON.stringify(GOOD))], async () => {
+    assert.equal((await analyzeThreat({ GEMINI_API_KEY: 'k' } as any, txCtx)).usedFallback, false)
+  })
+  const event = bodies[0].contents[0].parts[0].text
+  assert.match(event, /"transaction":\{"amount_usd":800,"guardian_limit_usd":500\}/)
+
+  await withFetch([err(400, 'API key not valid')], async () => {
+    const r = await analyzeThreat({ GEMINI_API_KEY: 'bad' } as any, txCtx)
+    assert.equal(r.usedFallback, true)
+    assert.match(r.analysis.user_education_message, /\$800\.00.*\$500\.00 limit/)
+    assert.match(r.analysis.trusted_contact_alert, /\$800\.00/)
+  })
+})

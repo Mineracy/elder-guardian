@@ -43,6 +43,20 @@ settings.post('/contacts', async (c) => {
   return c.json({ ok: true }, 201)
 })
 
+// --- Policy the extension enforces -----------------------------------------------
+
+settings.get('/policy', async (c) => {
+  const row = await c.env.DB.prepare(
+    'SELECT transaction_limit_cents, transaction_limit_action FROM users WHERE id = ?',
+  )
+    .bind(c.get('user').id)
+    .first<{ transaction_limit_cents: number | null; transaction_limit_action: string }>()
+  const cents = row?.transaction_limit_cents ?? null
+  return c.json({
+    transactionLimit: cents === null ? null : { amount: cents / 100, action: row?.transaction_limit_action ?? 'approve' },
+  })
+})
+
 // --- Whitelist ---------------------------------------------------------------
 
 settings.get('/whitelist', async (c) => {

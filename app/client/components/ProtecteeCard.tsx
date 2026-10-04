@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import { api, type Activity, type Protectee } from '../api'
+import { useEffect, useState, type FormEvent } from 'react'
+import { api, type Activity, type Protectee, type TransactionLimit } from '../api'
 
 const TRIGGER_LABELS: Record<string, string> = {
   NON_WHITELISTED_DOMAIN: 'Site not on trusted list',
@@ -12,6 +12,78 @@ const TRIGGER_LABELS: Record<string, string> = {
   PRIZE_OR_LOTTERY: 'Fake prize or lottery',
   INSECURE_LOGIN_FORM: 'Password asked for on an unencrypted page',
   LARGE_PAYMENT_FORM: 'Large payment',
+  LARGE_TRANSACTION: 'Transaction over your limit',
+}
+
+const plain = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2))
+const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+
+function TransactionLimitEditor({ person, onChanged }: { person: Protectee; onChanged: () => void | Promise<void> }) {
+  const current = person.transactionLimit
+  const [amount, setAmount] = useState(current ? plain(current.amount) : '')
+  const [action, setAction] = useState<TransactionLimit['action']>(current?.action ?? 'approve')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState('')
+
+  // Follow changes made elsewhere (another guardian, another tab) without clobbering typing on every refresh.
+  useEffect(() => {
+    setAmount(current ? plain(current.amount) : '')
+    setAction(current?.action ?? 'approve')
+  }, [current?.amount, current?.action])
+
+  async function save(limit: TransactionLimit | null) {
+    setBusy(true)
+    setError('')
+    setSaved('')
+    try {
+      await api.setTransactionLimit(person.id, limit)
+      await onChanged() // refresh first so the description below already reflects the new limit
+      setSaved(limit ? 'Limit saved.' : 'Limit removed.')
+      if (!limit) setAmount('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the limit')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    const value = Number(amount.replace(/[$,\s]/g, ''))
+    if (!Number.isFinite(value) || value <= 0) return setError('Enter an amount greater than $0')
+    void save({ amount: value, action })
+  }
+
+  return (
+    <div className="limit">
+      <h3>Transaction limit</h3>
+      <p className="muted small">
+        {current
+          ? `Payments or transfers over ${money(current.amount)} will ${current.action === 'approve' ? 'wait for your approval' : 'show them a warning'}.`
+          : 'No limit set. Choose an amount above which a payment or transfer gets a warning or needs your approval.'}
+      </p>
+      <form className="limit-form" onSubmit={submit}>
+        <label>
+          Limit ($)
+          <input type="text" inputMode="decimal" placeholder="500" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </label>
+        <label>
+          Above the limit
+          <select value={action} onChange={(e) => setAction(e.target.value as TransactionLimit['action'])}>
+            <option value="approve">Require my approval</option>
+            <option value="warn">Show them a warning only</option>
+          </select>
+        </label>
+        <div className="row">
+          <button className="btn primary" disabled={busy || !amount.trim()}>Save limit</button>
+          {current && <button type="button" className="btn ghost" disabled={busy} onClick={() => save(null)}>Remove limit</button>}
+        </div>
+      </form>
+      {saved && <p className="alert" role="status">{saved}</p>}
+      {error && <p className="alert error" role="alert">{error}</p>}
+    </div>
+  )
 }
 
 function ActivityRow({ item, onChanged }: { item: Activity; onChanged: () => void }) {
@@ -41,6 +113,7 @@ function ActivityRow({ item, onChanged }: { item: Activity; onChanged: () => voi
         </span>
         {item.status !== 'pending' && <span className={`status ${item.status}`}>{item.status}</span>}
       </div>
+      {item.amount !== null && <p className="amount">Amount: <strong>{money(item.amount)}</strong></p>}
       <code className="url">{item.target_url}</code>
       <p className="summary">{item.risk_summary}</p>
       {item.signals.length > 0 && (
@@ -70,7 +143,7 @@ function ActivityRow({ item, onChanged }: { item: Activity; onChanged: () => voi
   )
 }
 
-export default function ProtecteeCard({ person, onChanged }: { person: Protectee; onChanged: () => void }) {
+export default function ProtecteeCard({ person, onChanged }: { person: Protectee; onChanged: () => void | Promise<void> }) {
   const [showWhitelist, setShowWhitelist] = useState(false)
   const [newDomain, setNewDomain] = useState('')
   const [busy, setBusy] = useState(false)
@@ -116,6 +189,8 @@ export default function ProtecteeCard({ person, onChanged }: { person: Protectee
         </h2>
         {person.pendingCount > 0 && <span className="pill">{person.pendingCount} waiting</span>}
       </header>
+
+      <TransactionLimitEditor person={person} onChanged={onChanged} />
 
       <h3>Suspicious activity</h3>
       {person.activity.length === 0 ? (
