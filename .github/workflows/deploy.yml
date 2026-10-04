@@ -49,8 +49,8 @@ jobs:
           APP_BASE_URL: https://guardian-backend.rowdyhacks.workers.dev
           ENVIRONMENT: production
         run: |
-          echo "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY --yes
-          echo "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY --yes
+          printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY --name guardian-backend
+          printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY --name guardian-backend
           npx wrangler deploy \
             --var GEMINI_MODEL="$GEMINI_MODEL" \
             --var EMAIL_FROM="$EMAIL_FROM" \
