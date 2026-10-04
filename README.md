@@ -41,7 +41,7 @@ summary was a fallback.
 *require my approval* (the payment is held behind an "Awaiting verification" screen until the guardian approves, exactly like
 a blocked site) or *show a warning only* (the person can cancel or continue). `extension/src/transactions.js` runs in every
 frame, finds the amount the person typed (or the amount in a confirmation dialog) next to a Send / Pay / Transfer / Confirm
-button, and compares it to the limit; it doesn't depend on any one site's markup. An approved amount isn't asked about again
+button, and compares it to the limit; it doesn't depend on any one site's markup. An amount typed into a payment field is judged once the person pauses typing (never per keystroke), and "Cancel the payment" clears it. After a denial only that payment form is locked until the page is reloaded. An approval covers the amount that was approved: if the amount is edited while waiting, the new amount is held. An approved amount isn't asked about again
 for 15 minutes on that site. Guardians see the amount in the activity log and review email. Remember to whitelist the bank's
 domain (for the NGPF demo: `ngpf.org`), or the site itself is held first. To see what the detector sees on a page, run
 `chrome.storage.local.set({ debugTx: true })` in the extension's service-worker console and watch the page console for

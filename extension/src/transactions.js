@@ -5,10 +5,12 @@
   const APPROVAL_MEMORY_MS = 15 * 60 * 1000; // an approved amount isn't asked about again for a while
   const POLL_MS = 3000;
   const BYPASS_MS = 2000;
+  const TYPING_PAUSE_MS = 1200; // wait for the person to finish typing an amount before judging it
 
   const ACTION_WORDS = /\b(send|transfer|pay|payment|confirm|submit|deposit|withdraw|wire|zelle|venmo|purchase|buy|order|donate|complete|authorize|next|continue)\b/i;
   const AMOUNT_LABEL = /amount|\bsum\b|dollar|\$|how much|payment|\bpay\b|transfer|\bsend\b|total|value/;
   const NOT_AMOUNT_LABEL = /account|routing|card|cvv|cvc|zip|postal|phone|\bpin\b|ssn|social|date|year|month|check number|reference|memo|note|quantity|\bqty\b/;
+  const PAYMENT_BUTTON = /\b(submit|pay|send|confirm|continue|transfer|deposit|withdraw|next)\b/i;
   const SKIP_TYPES = new Set(['hidden', 'password', 'checkbox', 'radio', 'file', 'submit', 'button', 'image', 'reset', 'email', 'date', 'time', 'tel', 'url', 'color', 'range']);
 
   let policy = null;
@@ -104,14 +106,19 @@
   const labelOf = (el) => (el.innerText || el.value || el.getAttribute('aria-label') || el.title || '').trim();
   const fromOverlay = (e) => overlay && e.composedPath().includes(overlay.host);
 
+  const BUTTON_SELECTOR = 'button, input[type="submit"], input[type="button"], input[type="image"], [role="button"]';
+  const nameOf = (button) => (button.innerText || button.value || button.getAttribute('aria-label') || '').trim();
+
+  // After a denial, blank and disable the amount field(s) and the payment buttons next to them, and nothing else
+  // on the page (history, navigation, other forms keep working). Reload the page to start over.
   function lockPaymentForm() {
     const amountInputs = [...document.querySelectorAll('input, textarea, [contenteditable="true"]')].filter((input) => {
       const type = (input.getAttribute('type') || 'text').toLowerCase();
       if (SKIP_TYPES.has(type) || input.disabled || input.readOnly) return false;
-      const label = labelText(input);
-      return /amount|\bsum\b|dollar|\$|how much|payment|\bpay\b|transfer|\bsend\b|total|value/.test(label) || /enter amount/.test(label);
+      return AMOUNT_LABEL.test(labelText(input));
     });
 
+    const containers = new Set();
     for (const input of amountInputs) {
       input.value = '';
       input.setAttribute('aria-disabled', 'true');
@@ -119,24 +126,54 @@
       input.readOnly = true;
       input.disabled = true;
       input.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // The nearest ancestor that also holds a payment button is this payment's form.
+      let node = input.parentElement;
+      for (let i = 0; node && i < 8; i++, node = node.parentElement) {
+        if ([...node.querySelectorAll(BUTTON_SELECTOR)].some((b) => PAYMENT_BUTTON.test(nameOf(b)))) { containers.add(node); break; }
+      }
     }
 
-    const paymentActions = [...document.querySelectorAll('button, input[type="submit"], input[type="button"], input[type="image"], [role="button"]')].filter((button) => {
-      const name = (button.innerText || button.value || button.getAttribute('aria-label') || '').trim().toLowerCase();
-      return /submit|pay|send|confirm|continue|transfer|deposit|withdraw/.test(name);
-    });
-
-    for (const button of paymentActions) {
-      button.disabled = true;
-      button.setAttribute('aria-disabled', 'true');
-      button.style.pointerEvents = 'none';
-      button.style.opacity = '0.5';
+    for (const container of containers) {
+      for (const button of container.querySelectorAll(BUTTON_SELECTOR)) {
+        if (!PAYMENT_BUTTON.test(nameOf(button))) continue;
+        button.disabled = true;
+        button.setAttribute('aria-disabled', 'true');
+        button.style.pointerEvents = 'none';
+        button.style.opacity = '0.5';
+      }
     }
+  }
+
+  // Empties a field the way a person would, so frameworks that track the value (React and friends) notice too.
+  function clearField(field) {
+    try {
+      const proto = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (setter && setter.set && 'value' in field) setter.set.call(field, '');
+      else field.textContent = '';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    } catch (err) { log('could not clear the field', err); }
   }
 
   function fmt(n) { return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' }); }
 
+  // Is this amount over the limit and not yet approved?
+  function needsApproval(amount) {
+    if (!policy || !policy.transactionLimit || !amount || amount <= policy.transactionLimit.amount) return false;
+    return (approved[approvalKey(Math.round(amount * 100))] || 0) <= Date.now();
+  }
+
+  // Releases a held click/submit. The page isn't frozen while the overlay is up, so the amount may have been
+  // changed since it was approved: check again and hold the new amount instead of sending it unapproved.
   function resume(kind, el, submitter) {
+    const amount = findAmount(submitter || el);
+    if (needsApproval(amount)) {
+      log('amount changed while waiting', amount);
+      const { amount: limit, action } = policy.transactionLimit;
+      showOverlay({ amount, limit, action, cents: Math.round(amount * 100), label: labelOf(submitter || el), proceed: () => resume(kind, el, submitter) });
+      return;
+    }
     bypassUntil = Date.now() + BYPASS_MS;
     try {
       if (kind === 'submit' && el.requestSubmit) el.requestSubmit(submitter || undefined);
@@ -175,36 +212,46 @@
     return true;
   }
 
-  function interceptLargeTypedAmount(e) {
-    if (!policy || !policy.transactionLimit) return false;
-    if (Date.now() < bypassUntil || overlay) return false;
-
+  // An amount typed into a payment field is judged once the person pauses (or leaves the field), never per
+  // keystroke: "1200" passes through "120" on the way, and only the final amount should reach the guardian.
+  // The events themselves are left alone so the page's own state keeps up with the field.
+  let typedTimer = null;
+  function onTypedAmount(e, immediate) {
     const target = e.target;
-    const amount = paymentFieldAmount(target);
-    if (!amount) return false;
+    if (!paymentFieldAmount(target)) return; // other fields don't affect a pending check of the amount field
+    clearTimeout(typedTimer);
+    typedTimer = setTimeout(() => holdTypedAmount(target), immediate ? 0 : TYPING_PAUSE_MS);
+  }
 
+  function holdTypedAmount(target) {
+    if (!policy || !policy.transactionLimit || Date.now() < bypassUntil || overlay || !target.isConnected) return;
+    const amount = paymentFieldAmount(target); // read again: it may have changed or been cleared meanwhile
+    if (!needsApproval(amount)) return;
     const { amount: limit, action } = policy.transactionLimit;
-    if (amount <= limit) return false;
-
-    const cents = Math.round(amount * 100);
-    if ((approved[approvalKey(cents)] || 0) > Date.now()) return false;
-
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    showOverlay({ amount, limit, action, cents, label: labelOf(target), proceed: () => {
-      if (target && target.focus) target.focus();
-    } });
-    return true;
+    showOverlay({
+      amount, limit, action, cents: Math.round(amount * 100), label: labelOf(target),
+      proceed: () => { if (target.focus) target.focus(); },
+      onCancel: () => clearField(target), // cancelling the payment also empties the amount, so it isn't re-judged
+    });
   }
 
   document.addEventListener('click', (e) => { intercept(e, 'click'); }, true);
   document.addEventListener('submit', (e) => { intercept(e, 'submit'); }, true);
-  document.addEventListener('input', (e) => { interceptLargeTypedAmount(e); }, true);
-  document.addEventListener('change', (e) => { interceptLargeTypedAmount(e); }, true);
+  document.addEventListener('input', (e) => { onTypedAmount(e, false); }, true);
+  document.addEventListener('change', (e) => { onTypedAmount(e, true); }, true);
 
-  const send = (message) => new Promise((resolve) => chrome.runtime.sendMessage(message, (res) => resolve(res || { error: 'No response' })));
+  const send = (message) => new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(message, (res) => {
+        const failed = chrome.runtime.lastError; // read it so Chrome doesn't log "unchecked lastError"
+        resolve(res || { error: failed ? 'Elder Guardian was just updated. Reload this page' : 'No response' });
+      });
+    } catch {
+      resolve({ error: 'Elder Guardian was just updated. Reload this page' });
+    }
+  });
 
-  function showOverlay({ amount, limit, action, cents, label, proceed }) {
+  function showOverlay({ amount, limit, action, cents, label, proceed, onCancel }) {
     const host = document.createElement('div');
     const root = host.attachShadow({ mode: debug ? 'open' : 'closed' });
     const style = document.createElement('style');
@@ -232,6 +279,7 @@
     const el = (tag, text, cls) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n; };
     const button = (text, onClick, secondary) => { const b = el('button', text, secondary ? 'secondary' : ''); b.addEventListener('click', onClick); return b; };
     const show = (...nodes) => card.replaceChildren(...nodes);
+    const cancelPayment = () => { close(); if (onCancel) onCancel(); };
     const approve = () => {
       const now = Date.now();
       approved = Object.fromEntries(Object.entries(approved).filter(([, expiry]) => expiry > now));
@@ -245,7 +293,7 @@
 
     if (action === 'warn') {
       const row = el('div', '', 'row');
-      row.append(button('Cancel the payment', close), button("I'm sure, continue", approve, true));
+      row.append(button('Cancel the payment', cancelPayment), button("I'm sure, continue", approve, true));
       show(
         el('div', '⚠️', ''), el('h1', 'Please double-check this payment'), el('p', over),
         el('p', 'Scammers often rush people into sending money. Only go ahead if you are sure who this is for and why.'),
@@ -261,7 +309,7 @@
     const eduTitle = el('p', ''); eduTitle.style.fontWeight = '700'; const eduText = el('p', '');
     edu.append(eduTitle, eduText);
     const row = el('div', '', 'row');
-    const cancel = button('Cancel the payment', close, true);
+    const cancel = button('Cancel the payment', cancelPayment, true);
     row.append(cancel);
     const logo = document.createElement('img');
     logo.src = chrome.runtime.getURL('icons/icon-128.png');
@@ -289,7 +337,7 @@
           cancel.onclick = denyClose;
           cancel.textContent = 'Close';
           title.textContent = 'This payment was not approved';
-          note.textContent = data.reason === 'no_trusted_contact' ? 'You have not added a trusted contact yet, so large payments are paused.' : 'It has not been sent. Here is what to look out for next time:';
+          note.textContent = data.reason === 'no_trusted_contact' ? 'You have not added a trusted contact yet, so large payments are paused.' : 'It has not been sent, and this payment form is now locked (reload the page to start a new one). Here is what to look out for next time:';
           spin.hidden = true;
           return showEdu(data.userEducationMessage, true, 'How to spot this next time');
         }
