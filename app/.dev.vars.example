@@ -1,0 +1,29 @@
+# Local environment for the Worker (Hono API). Wrangler / the Vite plugin load `.dev.vars` automatically.
+#
+#   cp .dev.vars.example .dev.vars     # then fill in the values. `.dev.vars` is git-ignored: never commit it.
+#
+# All secrets and per-environment settings are read from here locally. In production set the same names with
+# `npx wrangler secret put <NAME>` (secrets) or the Cloudflare dashboard (plain variables).
+
+# --- Secrets -----------------------------------------------------------------------------------------------
+
+# Google Gemini API key (https://aistudio.google.com/apikey). Without it the hardcoded "Medium Risk" fallback is used.
+GEMINI_API_KEY=
+
+# Resend API key (https://resend.com/api-keys) for emailing guardians. Without it emails are printed to the console.
+RESEND_API_KEY=
+
+# --- Settings (not secret) ---------------------------------------------------------------------------------
+
+# "dev" prints emails to the console and echoes review/verification links in API responses (devReviewUrl,
+# devVerifyUrl). NEVER set this in production: the protected person could approve their own requests.
+ENVIRONMENT=dev
+
+# Public URL of this app, used in the links inside emails. Defaults to the request origin if unset.
+APP_BASE_URL=http://localhost:3000
+
+# Sender for guardian emails. Must be a domain verified in Resend (the default only works for testing).
+EMAIL_FROM=Guardian <onboarding@resend.dev>
+
+# Gemini model used for threat analysis.
+GEMINI_MODEL=gemini-2.5-flash

@@ -12,12 +12,9 @@ const app = new Hono<AppEnv>()
 app.use(
   '/api/*',
   cors({
-    origin: (origin, c) =>
-      origin.startsWith('chrome-extension://') ||
-      origin.startsWith('http://localhost') ||
-      origin === c.env.WEB_URL
-        ? origin
-        : null,
+    // The website is same-origin; only the extension (and local tooling) call across origins.
+    origin: (origin) =>
+      origin.startsWith('chrome-extension://') || origin.startsWith('http://localhost') ? origin : null,
     allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
   }),
