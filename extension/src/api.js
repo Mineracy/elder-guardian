@@ -21,11 +21,14 @@ export async function apiFetch(path, { method = 'GET', body, auth = true } = {})
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  let data = {}
+  // Read the body once as text: a failed res.json() consumes it, which used to turn every non-JSON
+  // server error (e.g. a 500 page) into "Unknown error" and hide the real reason.
+  const raw = await res.text().catch(() => '');
+  let data = {};
   try {
-    data = await res.json();
+    data = raw ? JSON.parse(raw) : {};
   } catch {
-    data = { error: await res.text().catch(() => 'Unknown error') };
+    data = { error: raw ? `Server error (${res.status}): ${raw.slice(0, 120)}` : `Server error (${res.status})` };
   }
 
   if (res.status === 401 && auth) await chrome.storage.local.remove('session');
