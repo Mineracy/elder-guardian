@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { createSession, hashPassword, requireAuth, verifyPassword } from '../auth'
+import { createSession, hashPassword, requireAuth, sendVerification, sha256Hex, verifyPassword } from '../auth'
 import { DEFAULT_WHITELIST } from '../domains'
 import type { AppEnv } from '../types'
 
@@ -41,7 +41,12 @@ auth.post('/signup', async (c) => {
   await db.batch(statements)
 
   const token = await createSession(db, id)
-  return c.json({ token, user: { id, email, role } }, 201)
+  const user = { id, email, role, email_verified: 0 }
+  if (role === 'trusted') {
+    const verifyUrl = await sendVerification(c.env, c.req.url, user)
+    return c.json({ token, user, ...(c.env.ENVIRONMENT === 'dev' ? { devVerifyUrl: verifyUrl } : {}) }, 201)
+  }
+  return c.json({ token, user }, 201)
 })
 
 auth.post('/signin', async (c) => {
@@ -50,19 +55,46 @@ auth.post('/signin', async (c) => {
   const password = String(body.password ?? '')
 
   const user = await c.env.DB.prepare(
-    'SELECT id, email, role, password_hash FROM users WHERE email = ?',
+    'SELECT id, email, role, email_verified, password_hash FROM users WHERE email = ?',
   )
     .bind(email)
-    .first<{ id: string; email: string; role: string; password_hash: string }>()
+    .first<{ id: string; email: string; role: string; email_verified: number; password_hash: string }>()
 
   if (!user || !(await verifyPassword(password, user.password_hash))) {
     return c.json({ error: 'Incorrect email or password' }, 401)
   }
 
   const token = await createSession(c.env.DB, user.id)
-  return c.json({ token, user: { id: user.id, email: user.email, role: user.role } })
+  return c.json({ token, user: { id: user.id, email: user.email, role: user.role, email_verified: user.email_verified } })
+})
+
+auth.post('/resend-verification', requireAuth, async (c) => {
+  const user = c.get('user')
+  if (user.email_verified) return c.json({ ok: true })
+  const url = await sendVerification(c.env, c.req.url, user)
+  return c.json({ ok: true, ...(c.env.ENVIRONMENT === 'dev' ? { devVerifyUrl: url } : {}) })
 })
 
 auth.get('/me', requireAuth, (c) => c.json({ user: c.get('user') }))
+
+/** Mounted at /verify: the link in the confirmation email lands here. */
+export const verify = new Hono<AppEnv>()
+
+verify.get('/:token', async (c) => {
+  const db = c.env.DB
+  const hash = await sha256Hex(c.req.param('token'))
+  const row = await db
+    .prepare('SELECT user_id FROM email_verifications WHERE token_hash = ? AND expires_at > ?')
+    .bind(hash, Date.now())
+    .first<{ user_id: string }>()
+  if (!row) return c.html('<h1>This confirmation link is invalid or has expired.</h1>', 400)
+
+  await db.batch([
+    db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').bind(row.user_id),
+    db.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(row.user_id),
+  ])
+  const web = c.env.WEB_URL
+  return web ? c.redirect(`${web}/dashboard?verified=1`) : c.html('<h1>Email confirmed. You can close this tab.</h1>')
+})
 
 export default auth

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { FC, PropsWithChildren } from 'hono/jsx'
+import { resolveIntervention } from '../resolve'
 import type { AppEnv } from '../types'
 
 type Review = {
@@ -107,22 +108,8 @@ review.post('/:token', async (c) => {
   const form = await c.req.parseBody()
   const decision = form.decision === 'allow' ? 'allowed' : form.decision === 'deny' ? 'denied' : null
   if (!decision) return c.text('Bad request', 400)
-  if (r.expires_at < Date.now()) return c.html(<Done status="denied" />)
 
-  // The status guard makes the first answer win if the link is opened twice.
-  const res = await db
-    .prepare("UPDATE intervention_requests SET status = ?, resolved_at = ? WHERE id = ? AND status = 'pending'")
-    .bind(decision, Date.now(), r.id)
-    .run()
-
-  if (res.meta.changes > 0 && decision === 'allowed' && form.always_allow === '1') {
-    await db
-      .prepare('INSERT OR IGNORE INTO whitelist_domains (id, user_id, domain, created_at) VALUES (?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), r.user_id, r.domain, Date.now())
-      .run()
-  }
-
-  const final = res.meta.changes > 0 ? decision : (await load(db, r.review_token))!.status
+  const final = await resolveIntervention(db, r, decision, form.always_allow === '1')
   return c.html(<Done status={final} />)
 })
 
