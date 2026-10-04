@@ -15,7 +15,7 @@ async function sendEmail(
     method: 'POST',
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: env.EMAIL_FROM ?? 'Elder Guardian <onboarding@resend.dev>',
+      from: env.EMAIL_FROM ?? 'Elder Guardian <hello@elderguardian.vip>',
       to: [msg.to],
       subject: msg.subject,
       text: msg.text,
