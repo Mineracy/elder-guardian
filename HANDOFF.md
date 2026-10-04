@@ -96,6 +96,13 @@ gate, Allow/Deny, whitelist, remove self, mobile layout); fresh clone starts cle
 - `extension/src/config.js` now exports `resolveApiBase` (it was missing, which broke the extension). Local DB scripts use
   the binding name `DB`. Run `npm test` in `app/`.
 
+## Update: transaction limit
+- Guardians set a per-person limit + action (`approve` or `warn`) on the dashboard (`PUT /api/guardian/protectees/:id/transaction-limit`,
+  migration 0004). The extension reads it from `GET /api/policy` (refreshed with the whitelist) and
+  `extension/src/transactions.js` enforces it; held payments are `LARGE_TRANSACTION` interventions carrying `amount`.
+- Built and tested against a mock bank, not the NGPF simulator itself (the sandbox couldn't reach ngpf.org). If it misses
+  there, enable `debugTx` (see README) and adjust the amount/button heuristics in `transactions.js`.
+
 ## Known gaps / next steps
 - Large-payment and unsafe-email detection from the original notes are not built (detection = non-whitelisted
   domain, fake tech-support text, remote-access downloads).

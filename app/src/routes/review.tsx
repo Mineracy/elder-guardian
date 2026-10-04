@@ -15,6 +15,7 @@ type Review = {
   status: string
   expires_at: number
   review_token: string
+  amount_cents: number | null
 }
 
 const css = `
@@ -62,7 +63,7 @@ async function load(db: D1Database, token: string) {
   return db
     .prepare(
       `SELECT r.id, r.user_id, u.email AS protected_email, r.target_url, r.domain, r.threat_level,
-              r.risk_summary, r.trusted_contact_alert, r.status, r.expires_at, r.review_token
+              r.risk_summary, r.trusted_contact_alert, r.status, r.expires_at, r.review_token, r.amount_cents
        FROM intervention_requests r JOIN users u ON u.id = r.user_id
        WHERE r.review_token = ?`,
     )
@@ -83,6 +84,12 @@ review.get('/:token', async (c) => {
       <h1>We think {r.protected_email} is at risk</h1>
       <p><span class={`badge ${r.threat_level}`}>{r.threat_level} risk</span></p>
       <p>{r.risk_summary}</p>
+      {r.amount_cents !== null && (
+        <p>
+          Transaction amount:{' '}
+          <strong>${(r.amount_cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+        </p>
+      )}
       <p>They tried to open:</p>
       <code>{r.target_url}</code>
       <form method="post">

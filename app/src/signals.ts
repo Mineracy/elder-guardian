@@ -19,6 +19,7 @@ export const TRIGGER_FLOORS: Record<string, ThreatLevel> = {
   PRIZE_OR_LOTTERY: 'MEDIUM',
   INSECURE_LOGIN_FORM: 'MEDIUM',
   LARGE_PAYMENT_FORM: 'MEDIUM',
+  LARGE_TRANSACTION: 'MEDIUM',
 }
 
 const SUSPICIOUS_TLDS = new Set([

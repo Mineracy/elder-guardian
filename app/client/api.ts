@@ -12,12 +12,17 @@ export type Activity = {
   status: 'pending' | 'allowed' | 'denied'
   created_at: number
   signals: { code: string; label: string; severity: 'MEDIUM' | 'HIGH' }[]
+  /** Transaction amount in dollars, for LARGE_TRANSACTION requests. */
+  amount: number | null
   /** True when the AI was unavailable and a standard summary was used instead. */
   ai_fallback: boolean
 }
+export type TransactionLimit = { amount: number; action: 'approve' | 'warn' }
+
 export type Protectee = {
   id: string
   email: string
+  transactionLimit: TransactionLimit | null
   pendingCount: number
   activity: Activity[]
   whitelist: string[]
@@ -72,6 +77,11 @@ export const api = {
     request<{ status: string }>(`/api/guardian/interventions/${id}/decision`, {
       method: 'POST',
       body: { decision, addToWhitelist },
+    }),
+  setTransactionLimit: (protectedId: string, limit: TransactionLimit | null) =>
+    request<{ ok: boolean }>(`/api/guardian/protectees/${protectedId}/transaction-limit`, {
+      method: 'PUT',
+      body: limit ? { amount: limit.amount, action: limit.action } : { amount: null },
     }),
   addWhitelist: (protectedId: string, domain: string) =>
     request<{ ok: boolean; domain: string }>(`/api/guardian/protectees/${protectedId}/whitelist`, {

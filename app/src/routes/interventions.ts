@@ -4,10 +4,11 @@ import { sendReviewEmail } from '../email'
 import { normalizeDomain } from '../domains'
 import { analyzeThreat } from '../gemini'
 import { analyzeUrl, maxLevel, TRIGGER_FLOORS } from '../signals'
-import type { AppEnv } from '../types'
+import type { AppEnv, ThreatLevel } from '../types'
 
 const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000
 const DEDUPE_WINDOW_MS = 10 * 60 * 1000
+const MAX_AMOUNT_DOLLARS = 1_000_000_000
 
 const interventions = new Hono<AppEnv>()
 interventions.use('*', requireAuth)
@@ -50,6 +51,19 @@ interventions.post('/', async (c) => {
   const triggerType = String(body.triggerType ?? 'NON_WHITELISTED_DOMAIN').slice(0, 64)
   const context = body.context ? String(body.context).slice(0, 1000) : undefined
 
+  // LARGE_TRANSACTION carries the amount (dollars) the person was about to send or pay.
+  let amountCents: number | null = null
+  if (body.amount !== undefined && body.amount !== null) {
+    const dollars = Number(body.amount)
+    if (!Number.isFinite(dollars) || dollars <= 0 || dollars > MAX_AMOUNT_DOLLARS) {
+      return c.json({ error: 'amount must be a positive number of dollars' }, 400)
+    }
+    amountCents = Math.round(dollars * 100)
+  }
+  if (triggerType === 'LARGE_TRANSACTION' && amountCents === null) {
+    return c.json({ error: 'amount is required for a transaction request' }, 400)
+  }
+
   let domain: string | null = null
   try {
     const u = new URL(targetUrl)
@@ -66,10 +80,10 @@ interventions.post('/', async (c) => {
     .prepare(
       `SELECT id, target_url, threat_level, user_education_message, status, expires_at
        FROM intervention_requests
-       WHERE user_id = ? AND target_url = ? AND created_at > ?
+       WHERE user_id = ? AND target_url = ? AND amount_cents IS ? AND created_at > ?
        ORDER BY created_at DESC LIMIT 1`,
     )
-    .bind(user.id, targetUrl, Date.now() - DEDUPE_WINDOW_MS)
+    .bind(user.id, targetUrl, amountCents, Date.now() - DEDUPE_WINDOW_MS)
     .first<Row>()
   if (recent && recent.status !== 'allowed') {
     return c.json(publicView(await expireIfNeeded(db, recent)))
@@ -80,6 +94,12 @@ interventions.post('/', async (c) => {
     .bind(user.id)
     .all<{ trusted_email: string }>()
 
+  const limitRow = await db
+    .prepare('SELECT transaction_limit_cents FROM users WHERE id = ?')
+    .bind(user.id)
+    .first<{ transaction_limit_cents: number | null }>()
+  const limitCents = limitRow?.transaction_limit_cents ?? null
+
   const { signals, floor: urlFloor } = analyzeUrl(targetUrl)
   const signalLabels = signals.map((s) => s.label)
   const { analysis: aiAnalysis, usedFallback, aiError } = await analyzeThreat(c.env, {
@@ -89,11 +109,15 @@ interventions.post('/', async (c) => {
     context,
     protectedEmail: user.email,
     signals: signalLabels,
+    amountCents: amountCents ?? undefined,
+    limitCents: limitCents ?? undefined,
   })
 
   // Our own checks set a minimum severity so a lenient (or unavailable) AI can't under-rate a clear scam.
   let threatLevel = aiAnalysis.threat_level
-  for (const floor of [urlFloor, Object.hasOwn(TRIGGER_FLOORS, triggerType) ? TRIGGER_FLOORS[triggerType] : null]) {
+  // A transaction far above the limit is rated higher regardless of the AI.
+  const farAboveLimit: ThreatLevel | null = amountCents !== null && limitCents !== null && amountCents >= limitCents * 3 ? 'HIGH' : null
+  for (const floor of [urlFloor, farAboveLimit, Object.hasOwn(TRIGGER_FLOORS, triggerType) ? TRIGGER_FLOORS[triggerType] : null]) {
     if (floor) threatLevel = maxLevel(threatLevel, floor)
   }
   const analysis = { ...aiAnalysis, threat_level: threatLevel }
@@ -109,14 +133,14 @@ interventions.post('/', async (c) => {
       `INSERT INTO intervention_requests
        (id, user_id, target_url, domain, trigger_type, context, threat_level, risk_summary,
         user_education_message, trusted_contact_alert, review_token, status, used_fallback,
-        created_at, expires_at, resolved_at, signals, ai_error)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        created_at, expires_at, resolved_at, signals, ai_error, amount_cents)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id, user.id, targetUrl, domain, triggerType, context ?? null, analysis.threat_level,
       analysis.risk_summary, analysis.user_education_message, analysis.trusted_contact_alert,
       reviewToken, status, usedFallback ? 1 : 0, now, now + REVIEW_WINDOW_MS,
-      status === 'denied' ? now : null, JSON.stringify(signals), aiError ?? null,
+      status === 'denied' ? now : null, JSON.stringify(signals), aiError ?? null, amountCents,
     )
     .run()
 
@@ -131,6 +155,7 @@ interventions.post('/', async (c) => {
         reviewUrl,
         targetUrl,
         threatLevel: analysis.threat_level,
+        amountCents: amountCents ?? undefined,
       }),
     ),
   )
