@@ -45,7 +45,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           GEMINI_MODEL: gemini-2.5-flash
-          EMAIL_FROM: Guardian <hello@elderguardian.vip>
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           APP_BASE_URL: https://guardian-backend.rowdyhacks.workers.dev
           ENVIRONMENT: production
         run: |
