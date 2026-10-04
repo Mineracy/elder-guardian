@@ -3,6 +3,7 @@ import { randomToken, requireAuth } from '../auth'
 import { sendReviewEmail } from '../email'
 import { normalizeDomain } from '../domains'
 import { analyzeThreat } from '../gemini'
+import { analyzeUrl, maxLevel, TRIGGER_FLOORS } from '../signals'
 import type { AppEnv } from '../types'
 
 const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -79,13 +80,23 @@ interventions.post('/', async (c) => {
     .bind(user.id)
     .all<{ trusted_email: string }>()
 
-  const { analysis, usedFallback } = await analyzeThreat(c.env, {
+  const { signals, floor: urlFloor } = analyzeUrl(targetUrl)
+  const signalLabels = signals.map((s) => s.label)
+  const { analysis: aiAnalysis, usedFallback, aiError } = await analyzeThreat(c.env, {
     targetUrl,
     domain,
     triggerType,
     context,
     protectedEmail: user.email,
+    signals: signalLabels,
   })
+
+  // Our own checks set a minimum severity so a lenient (or unavailable) AI can't under-rate a clear scam.
+  let threatLevel = aiAnalysis.threat_level
+  for (const floor of [urlFloor, Object.hasOwn(TRIGGER_FLOORS, triggerType) ? TRIGGER_FLOORS[triggerType] : null]) {
+    if (floor) threatLevel = maxLevel(threatLevel, floor)
+  }
+  const analysis = { ...aiAnalysis, threat_level: threatLevel }
 
   const id = crypto.randomUUID()
   const reviewToken = randomToken()
@@ -98,14 +109,14 @@ interventions.post('/', async (c) => {
       `INSERT INTO intervention_requests
        (id, user_id, target_url, domain, trigger_type, context, threat_level, risk_summary,
         user_education_message, trusted_contact_alert, review_token, status, used_fallback,
-        created_at, expires_at, resolved_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        created_at, expires_at, resolved_at, signals, ai_error)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id, user.id, targetUrl, domain, triggerType, context ?? null, analysis.threat_level,
       analysis.risk_summary, analysis.user_education_message, analysis.trusted_contact_alert,
       reviewToken, status, usedFallback ? 1 : 0, now, now + REVIEW_WINDOW_MS,
-      status === 'denied' ? now : null,
+      status === 'denied' ? now : null, JSON.stringify(signals), aiError ?? null,
     )
     .run()
 
