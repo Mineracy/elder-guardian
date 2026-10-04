@@ -3,6 +3,7 @@
   "name": "guardian-backend",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-03",
+  "workers_dev": true,
   // The React site is served by this same Worker; API/review/verify paths go to Hono first.
   "assets": {
     "not_found_handling": "single-page-application",
