@@ -6,7 +6,7 @@ export default function Header() {
   const navigate = useNavigate()
   return (
     <header className="site-header">
-      <Link to="/" className="brand">🛡️ Guardian</Link>
+      <Link to="/" className="brand">🛡️ Elder Guardian</Link>
       <nav>
         {user ? (
           <>
@@ -14,7 +14,7 @@ export default function Header() {
             <button className="btn ghost" onClick={() => { signOut(); navigate('/') }}>Sign out</button>
           </>
         ) : (
-          <Link to="/login" className="btn primary">Guardian login</Link>
+          <Link to="/login" className="btn primary">Elder Guardian login</Link>
         )}
       </nav>
     </header>

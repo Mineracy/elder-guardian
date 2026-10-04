@@ -46,7 +46,7 @@ const Layout: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) =
 )
 
 const Done: FC<{ status: string }> = ({ status }) => (
-  <Layout title="Guardian review">
+  <Layout title="Elder Guardian review">
     <h1>{status === 'allowed' ? 'You allowed this' : 'You denied this'}</h1>
     <p>
       {status === 'allowed'
@@ -79,7 +79,7 @@ review.get('/:token', async (c) => {
   }
 
   return c.html(
-    <Layout title="Guardian review">
+    <Layout title="Elder Guardian review">
       <h1>We think {r.protected_email} is at risk</h1>
       <p><span class={`badge ${r.threat_level}`}>{r.threat_level} risk</span></p>
       <p>{r.risk_summary}</p>

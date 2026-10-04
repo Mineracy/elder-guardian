@@ -58,12 +58,12 @@ export default function ProtecteeCard({ person, onChanged }: { person: Protectee
   const [error, setError] = useState('')
 
   async function removeSelf() {
-    if (!window.confirm(`Stop being ${person.email}'s trusted guardian? They'll no longer be able to get approvals from you.`)) return
+    if (!window.confirm(`Stop being ${person.email}'s trusted Elder Guardian? They'll no longer be able to get approvals from you.`)) return
     try {
       await api.removeSelf(person.id)
       onChanged()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not remove you as guardian')
+      setError(e instanceof Error ? e.message : 'Could not remove you as an Elder Guardian')
     }
   }
 
@@ -92,7 +92,7 @@ export default function ProtecteeCard({ person, onChanged }: { person: Protectee
         <button className="btn ghost" aria-expanded={showWhitelist} onClick={() => setShowWhitelist((s) => !s)}>
           {showWhitelist ? 'Hide whitelist' : 'View whitelist'}
         </button>
-        <button className="btn danger-ghost" onClick={removeSelf}>🗑 Remove self as trusted guardian</button>
+        <button className="btn danger-ghost" onClick={removeSelf}>🗑 Remove self as trusted Elder Guardian</button>
       </div>
       {error && <p className="alert error">{error}</p>}
 

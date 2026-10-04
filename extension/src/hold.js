@@ -24,7 +24,7 @@ function showEducation(message, warn) {
 }
 
 function showError(message) {
-  $('title').textContent = "We couldn't reach Guardian";
+  $('title').textContent = "We couldn't reach Elder Guardian";
   $('subtitle').textContent = `${message}. For your safety this page stays blocked. Please reload in a moment or ask your trusted contact.`;
   $('spinner').hidden = true;
 }
@@ -50,7 +50,7 @@ function onDenied(data) {
   $('title').textContent = 'This was blocked';
   $('subtitle').textContent =
     data.reason === 'no_trusted_contact'
-      ? 'You have not added a trusted contact yet. Click the Guardian icon in your toolbar to add one.'
+      ? 'You have not added a trusted contact yet. Click the Elder Guardian icon in your toolbar to add one.'
       : 'This was not approved. Here is what to look out for next time:';
   $('spinner').hidden = true;
   showEducation(data.userEducationMessage, true);

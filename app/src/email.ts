@@ -15,7 +15,7 @@ async function sendEmail(
     method: 'POST',
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: env.EMAIL_FROM ?? 'Guardian <onboarding@resend.dev>',
+      from: env.EMAIL_FROM ?? 'Elder Guardian <onboarding@resend.dev>',
       to: [msg.to],
       subject: msg.subject,
       text: msg.text,
@@ -28,7 +28,7 @@ async function sendEmail(
 export function sendVerificationEmail(env: Bindings, to: string, verifyUrl: string) {
   return sendEmail(env, {
     to,
-    subject: 'Confirm your email to become a trusted guardian',
+    subject: 'Confirm your email to become a trusted Elder Guardian',
     text: `Confirm your email address so you can review requests for the people you protect:\n${verifyUrl}\n\nIf you didn't create this account, ignore this email.`,
     html: `<p>Confirm your email address so you can review requests for the people you protect.</p><p><a href="${escapeHtml(verifyUrl)}">Confirm my email</a></p><p>If you didn't create this account, ignore this email.</p>`,
   })

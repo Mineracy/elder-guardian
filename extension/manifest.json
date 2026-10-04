@@ -1,10 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Guardian",
+  "name": "Elder Guardian",
   "version": "2.0.0",
   "description": "Pauses risky links and asks a trusted contact to approve them, to protect against scams.",
   "permissions": ["storage", "downloads", "webNavigation", "tabs"],
-  "host_permissions": ["http://localhost:3000/*"],
+  "host_permissions": [
+  "https://guardian-backend.rowdyhacks.workers.dev/*",
+  "http://localhost:3000/*"
+  ],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"

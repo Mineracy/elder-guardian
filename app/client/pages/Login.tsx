@@ -32,7 +32,7 @@ export default function Login() {
   return (
     <main className="narrow">
       <form className="card form" onSubmit={submit}>
-        <h1>{mode === 'signin' ? 'Guardian sign in' : 'Create a guardian account'}</h1>
+        <h1>{mode === 'signin' ? 'Elder Guardian sign in' : 'Create an Elder Guardian account'}</h1>
         {mode === 'signup' && (
           <p className="muted">
             Use the email address the person you’re protecting entered for you. We’ll send a link to confirm it’s yours.
@@ -49,7 +49,7 @@ export default function Login() {
           {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
         </button>
         <button type="button" className="link" onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}>
-          {mode === 'signin' ? 'New guardian? Create an account' : 'Already have an account? Sign in'}
+          {mode === 'signin' ? 'New Elder Guardian? Create an account' : 'Already have an account? Sign in'}
         </button>
       </form>
     </main>

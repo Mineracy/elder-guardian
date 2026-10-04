@@ -79,7 +79,7 @@ export default function Dashboard() {
         <div className="card">
           <h2>No one to look after yet</h2>
           <p className="muted">
-            When someone adds <strong>{user?.email}</strong> as their trusted contact in the Guardian extension,
+            When someone adds <strong>{user?.email}</strong> as their trusted contact in the Elder Guardian extension,
             they’ll appear here.
           </p>
         </div>

@@ -9,13 +9,13 @@ const guardian = new Hono<AppEnv>()
 guardian.use('*', requireAuth)
 guardian.use('*', async (c, next) => {
   const user = c.get('user')
-  if (user.role !== 'trusted') return c.json({ error: 'Guardian accounts only' }, 403)
-  // Without this, anyone could sign up with a guardian's address and approve scams.
+  if (user.role !== 'trusted') return c.json({ error: 'Elder Guardian accounts only' }, 403)
+  // Without this, anyone could sign up with an Elder Guardian's address and approve scams.
   if (!user.email_verified) return c.json({ error: 'verify_email' }, 403)
   await next()
 })
 
-/** True when `protectedId` has paired this guardian's email. */
+/** True when `protectedId` has paired this Elder Guardian's email. */
 async function isPaired(db: D1Database, protectedId: string, guardianEmail: string) {
   return !!(await db
     .prepare('SELECT 1 FROM contact_pairings WHERE protected_user_id = ? AND trusted_email = ?')
