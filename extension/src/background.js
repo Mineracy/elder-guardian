@@ -1,4 +1,4 @@
-import { API_BASE } from './config.js';
+import { API_BASE, resolveApiBase } from './config.js';
 import {
   apiFetch, getSession, grantPass, hasPass, hostOf, isWhitelisted, refreshWhitelist,
 } from './api.js';
@@ -20,15 +20,22 @@ async function isProtected() {
 // Detection engine: any top-level navigation to a domain outside the whitelist is held.
 chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   if (details.frameId !== 0 || !/^https?:/.test(details.url)) return;
-  if (!(await isProtected())) return;
+
+  const session = await getSession();
+  if (!session || session.role !== 'protected') {
+    console.debug('[guardian] skipping block: not a protected session');
+    return;
+  }
 
   const host = hostOf(details.url);
-  if (!host || host === BACKEND_HOST) return; // never intercept the review/backend pages
+  const backendHost = hostOf(await resolveApiBase());
+  if (!host || host === backendHost) return;
   if (await hasPass(details.url)) return;
 
   const { whitelist = [] } = await chrome.storage.local.get('whitelist');
   if (isWhitelisted(host, whitelist)) return;
 
+  console.log('[guardian] holding blocked page', { url: details.url, host, trigger: 'NON_WHITELISTED_DOMAIN' });
   chrome.tabs.update(details.tabId, {
     url: holdUrl({ target: details.url, trigger: 'NON_WHITELISTED_DOMAIN' }),
   });

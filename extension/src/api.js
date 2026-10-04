@@ -1,4 +1,4 @@
-import { API_BASE } from './config.js';
+import { resolveApiBase } from './config.js';
 
 const PASS_TTL_MS = 30 * 60 * 1000;
 
@@ -8,20 +8,31 @@ export async function getSession() {
 }
 
 export async function apiFetch(path, { method = 'GET', body, auth = true } = {}) {
+  const base = await resolveApiBase();
   const headers = { 'Content-Type': 'application/json' };
   if (auth) {
     const session = await getSession();
     if (!session) throw new Error('Not signed in');
     headers.Authorization = `Bearer ${session.token}`;
   }
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${base}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = await res.json().catch(() => ({}));
+
+  let data = {}
+  try {
+    data = await res.json();
+  } catch {
+    data = { error: await res.text().catch(() => 'Unknown error') };
+  }
+
   if (res.status === 401 && auth) await chrome.storage.local.remove('session');
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  if (!res.ok) {
+    const msg = data?.error || data?.message || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
   return data;
 }
 
