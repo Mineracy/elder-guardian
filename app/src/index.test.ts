@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import app from './index.js'
-import { analyzeThreat } from './gemini.js'
+import { analyzeThreat, normalizeGeminiModel } from './gemini.js'
 
 type HealthJson = { ok: boolean; service: string }
 type JsonResult = { ok: boolean; service?: string; threat_level?: string; user_education_message?: string }
@@ -79,12 +79,18 @@ test('analyzeThreat accepts fenced json responses from Gemini', async () => {
   }
 })
 
+test('normalizeGeminiModel handles friendly labels like 3.5 flash lite', () => {
+  assert.equal(normalizeGeminiModel('3.5 flash lite'), 'gemini-3.5-flash-lite')
+  assert.equal(normalizeGeminiModel('gemini-3.5-flash-lite'), 'gemini-3.5-flash-lite')
+  assert.equal(normalizeGeminiModel('gemini-3.8-flash'), 'gemini-3.8-flash')
+})
+
 test('gemini debug endpoint returns a clear status payload', async () => {
   const originalFetch = globalThis.fetch
   const originalApiKey = process.env.GEMINI_API_KEY
   const originalModel = process.env.GEMINI_MODEL
   process.env.GEMINI_API_KEY = 'test-key'
-  process.env.GEMINI_MODEL = 'gemini-3.8-flash'
+  process.env.GEMINI_MODEL = '3.5 flash lite'
 
   globalThis.fetch = async () =>
     new Response(JSON.stringify({

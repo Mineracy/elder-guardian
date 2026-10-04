@@ -91,6 +91,29 @@ export function parseAnalysis(text: string): ThreatAnalysis | null {
   return parseAnalysisText(text)
 }
 
+export function normalizeGeminiModel(model?: string): string {
+  const raw = (model ?? '').trim()
+  const fallback = 'gemini-3.5-flash-lite'
+  if (!raw) return fallback
+
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-')
+    .replace(/[^a-z0-9.-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+  if (!cleaned) return fallback
+
+  const withPrefix = cleaned.startsWith('gemini-') ? cleaned : `gemini-${cleaned}`
+
+  if (/^gemini-3\.5-flash-lite$/.test(withPrefix)) return 'gemini-3.5-flash-lite'
+  if (/^gemini-3\.8-flash$/.test(withPrefix)) return 'gemini-3.8-flash'
+  if (/^gemini-\d+\.\d+-flash(?:-lite)?$/.test(withPrefix)) return withPrefix
+
+  return withPrefix
+}
+
 export async function analyzeThreat(
   env: Bindings,
   ctx: InterventionContext,
@@ -99,7 +122,7 @@ export async function analyzeThreat(
     return { analysis: fallbackAnalysis(ctx), usedFallback: true }
   }
 
-  const model = env.GEMINI_MODEL ?? 'gemini-3.8-flash'
+  const model = normalizeGeminiModel(env.GEMINI_MODEL)
   const event = JSON.stringify({
     url: ctx.targetUrl,
     domain: ctx.domain,

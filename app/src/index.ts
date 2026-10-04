@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { parseAnalysis } from './gemini'
+import { normalizeGeminiModel, parseAnalysis } from './gemini'
 import auth, { verify } from './routes/auth'
 import guardian from './routes/guardian'
 import interventions from './routes/interventions'
@@ -32,7 +32,7 @@ app.get('/health', (c) => c.json({ ok: true, service: 'guardian-backend' }))
 
 app.get('/test', async (c) => {
   const key = c.env?.GEMINI_API_KEY ?? process.env.GEMINI_API_KEY
-  const model = c.env?.GEMINI_MODEL ?? process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite'
+  const model = normalizeGeminiModel(c.env?.GEMINI_MODEL ?? process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite')
 
   if (!key) {
     return c.json(
