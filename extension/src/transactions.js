@@ -87,6 +87,19 @@
     return amountInDialog(el);
   }
 
+  function paymentFieldAmount(target) {
+    if (!target || !(target instanceof HTMLElement)) return 0;
+    const type = (target.getAttribute('type') || 'text').toLowerCase();
+    if (SKIP_TYPES.has(type) || target.disabled || target.readOnly) return 0;
+    const value = parseMoney(target.value !== undefined ? target.value : target.textContent);
+    if (value === null) return 0;
+    const label = labelText(target);
+    const looksLikePaymentField = /amount|\bsum\b|dollar|\$|how much|payment|\bpay\b|transfer|\bsend\b|total|value/.test(label) || /enter amount/.test(label);
+    const badLabel = /account|routing|card|cvv|cvc|zip|postal|phone|\bpin\b|ssn|social|date|year|month|check number|reference|memo|note|quantity|\bqty\b/.test(label);
+    if (!looksLikePaymentField || (badLabel && !/amount/.test(label))) return 0;
+    return value;
+  }
+
   const actionable = (target) => target && target.closest && target.closest('button, input[type="submit"], input[type="button"], input[type="image"], [role="button"], a');
   const labelOf = (el) => (el.innerText || el.value || el.getAttribute('aria-label') || el.title || '').trim();
   const fromOverlay = (e) => overlay && e.composedPath().includes(overlay.host);
@@ -132,8 +145,32 @@
     return true;
   }
 
+  function interceptLargeTypedAmount(e) {
+    if (!policy || !policy.transactionLimit) return false;
+    if (Date.now() < bypassUntil || overlay) return false;
+
+    const target = e.target;
+    const amount = paymentFieldAmount(target);
+    if (!amount) return false;
+
+    const { amount: limit, action } = policy.transactionLimit;
+    if (amount <= limit) return false;
+
+    const cents = Math.round(amount * 100);
+    if ((approved[approvalKey(cents)] || 0) > Date.now()) return false;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    showOverlay({ amount, limit, action, cents, label: labelOf(target), proceed: () => {
+      if (target && target.focus) target.focus();
+    } });
+    return true;
+  }
+
   document.addEventListener('click', (e) => { intercept(e, 'click'); }, true);
   document.addEventListener('submit', (e) => { intercept(e, 'submit'); }, true);
+  document.addEventListener('input', (e) => { interceptLargeTypedAmount(e); }, true);
+  document.addEventListener('change', (e) => { interceptLargeTypedAmount(e); }, true);
 
   const send = (message) => new Promise((resolve) => chrome.runtime.sendMessage(message, (res) => resolve(res || { error: 'No response' })));
 
