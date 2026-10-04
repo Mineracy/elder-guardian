@@ -3,73 +3,54 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hono Demo</title>
-    <style>
-      body {
-        margin: 0;
-        font-family: sans-serif;
-        background: #f7f7f7;
-        color: #1f2937;
-      }
-      .container {
-        width: 320px;
-        padding: 16px;
-      }
-      label {
-        display: block;
-        font-size: 12px;
-        margin-bottom: 8px;
-        font-weight: 600;
-      }
-      input,
-      textarea,
-      button {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 8px 10px;
-        margin-bottom: 12px;
-        border-radius: 8px;
-        border: 1px solid #d1d5db;
-        font: inherit;
-      }
-      button {
-        background: #2563eb;
-        color: white;
-        border: none;
-        cursor: pointer;
-      }
-      pre {
-        background: #111827;
-        color: #f9fafb;
-        padding: 10px;
-        border-radius: 8px;
-        white-space: pre-wrap;
-        font-size: 11px;
-        margin: 0;
-      }
-    </style>
+    <title>Guardian</title>
+    <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <div class="container">
-      <h2>Send to Hono</h2>
-      <form id="hono-form">
-        <label>
-          Name
-          <input type="text" name="name" value="Extension User" required />
-        </label>
+      <h2>🛡️ Guardian</h2>
+      <p id="error" class="error" hidden></p>
 
-        <label>
-          Message
-          <textarea name="message" rows="4" required>Message from the browser extension</textarea>
-        </label>
-
-        <button type="submit">Send</button>
+      <!-- Signed out -->
+      <form id="auth-form" hidden>
+        <label>Email <input type="email" name="email" required autocomplete="username" /></label>
+        <label>Password <input type="password" name="password" required minlength="8" autocomplete="current-password" /></label>
+        <div id="role-row" hidden>
+          <label>I am the
+            <select name="role">
+              <option value="protected">person being protected</option>
+              <option value="trusted">trusted contact</option>
+            </select>
+          </label>
+        </div>
+        <button type="submit" id="auth-submit">Sign in</button>
+        <button type="button" id="auth-toggle" class="link">New here? Create an account</button>
       </form>
 
-      <h3>Response</h3>
-      <pre id="response">Waiting for a response…</pre>
-    </div>
+      <!-- Signed in -->
+      <div id="account" hidden>
+        <p class="muted">Signed in as <strong id="who"></strong></p>
 
-    <script src="popup.js"></script>
+        <section id="protected-only">
+          <h3>Trusted contact</h3>
+          <p id="contact-current" hidden></p>
+          <form id="contact-form" hidden>
+            <label>Their email <input type="email" name="email" placeholder="name@gmail.com" required /></label>
+            <button type="submit">Connect trusted person</button>
+          </form>
+          <p class="muted" id="contact-note" hidden>For your safety, only your trusted contact can change this list.</p>
+
+          <h3>Approved sites</h3>
+          <ul id="whitelist"></ul>
+        </section>
+
+        <section id="trusted-only" hidden>
+          <p>As a trusted contact you'll get an email with a secure link whenever someone you look after needs approval. There's nothing else to set up here.</p>
+        </section>
+
+        <button id="signout" class="secondary">Sign out</button>
+      </div>
+    </div>
+    <script type="module" src="popup.js"></script>
   </body>
 </html>
