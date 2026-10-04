@@ -153,6 +153,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return apiFetch('/api/interventions', { method: 'POST', body: message.payload });
       case 'GET_INTERVENTION':
         return apiFetch(`/api/interventions/${encodeURIComponent(message.id)}`);
+      case 'GET_POLICY':
+        return apiFetch('/api/policy');
       case 'RELEASE':
         await grantPass(message.target);
         await refreshWhitelist().catch(() => {}); // picks up "always allow"

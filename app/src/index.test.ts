@@ -47,6 +47,30 @@ test('signup and alert pipeline work', async () => {
   assert.ok(alertJson.threat_level || alertJson.userEducationMessage || alertJson.user_education_message)
 })
 
+test('trusted guardian can view pending dashboard before verification', async () => {
+  const signupRes = await app.request('http://localhost/api/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: 'guardian-pending@example.com',
+      password: 'secret123',
+      role: 'trusted',
+    }),
+  })
+
+  const signupJson = (await signupRes.json()) as { token?: string }
+  assert.equal(signupRes.status, 201)
+  assert.ok(signupJson.token)
+
+  const dashboardRes = await app.request('http://localhost/api/guardian/dashboard', {
+    headers: { Authorization: `Bearer ${signupJson.token}` },
+  })
+
+  assert.equal(dashboardRes.status, 200)
+  const dashboard = await dashboardRes.json() as { protectees: unknown[] }
+  assert.ok(Array.isArray(dashboard.protectees))
+})
+
 test('analyzeThreat accepts fenced json responses from Gemini', async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async () =>

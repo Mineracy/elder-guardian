@@ -30,6 +30,32 @@
     if (changes.txApproved) approved = changes.txApproved.newValue || {};
   });
 
+  async function syncPolicy() {
+    try {
+      const existing = await chrome.storage.local.get('policy');
+      if (existing.policy?.transactionLimit) {
+        policy = existing.policy;
+        return;
+      }
+      const data = await new Promise((resolve) => {
+        try {
+          chrome.runtime.sendMessage({ action: 'GET_POLICY' }, (res) => resolve(res || {}));
+        } catch {
+          resolve({});
+        }
+      });
+      if (data && data.transactionLimit) {
+        const next = { ...data, backendHost: location.hostname || null };
+        policy = next;
+        await chrome.storage.local.set({ policy: next });
+      }
+    } catch (err) {
+      log('syncPolicy failed', err);
+    }
+  }
+
+  syncPolicy();
+
   function parseMoney(raw) {
     if (raw == null) return null;
     const t = String(raw).trim().replace(/^(?:usd|us\$|\$)\s*/i, '').replace(/\s*(?:usd|dollars?)$/i, '');
