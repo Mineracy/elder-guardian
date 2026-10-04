@@ -1,83 +1,76 @@
-const ALERT_API_URL = 'http://localhost:3000/api/alerts';
-const FORM_API_URL = 'http://localhost:3000/api/form';
+import { API_BASE } from './config.js';
+import {
+  apiFetch, getSession, grantPass, hasPass, hostOf, isWhitelisted, refreshWhitelist,
+} from './api.js';
 
-async function postToHono(url, payload) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+const DANGEROUS_DOWNLOADS = [/anydesk/i, /teamviewer/i, /rustdesk/i, /screenconnect/i];
+const BACKEND_HOST = hostOf(API_BASE);
+
+function holdUrl({ target, trigger, context, kind = 'navigate' }) {
+  const params = new URLSearchParams({ target, trigger, kind });
+  if (context) params.set('context', context.slice(0, 300));
+  return chrome.runtime.getURL(`src/hold.html?${params}`);
+}
+
+async function isProtected() {
+  const session = await getSession();
+  return session?.role === 'protected';
+}
+
+// Detection engine: any top-level navigation to a domain outside the whitelist is held.
+chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
+  if (details.frameId !== 0 || !/^https?:/.test(details.url)) return;
+  if (!(await isProtected())) return;
+
+  const host = hostOf(details.url);
+  if (!host || host === BACKEND_HOST) return; // never intercept the review/backend pages
+  if (await hasPass(details.url)) return;
+
+  const { whitelist = [] } = await chrome.storage.local.get('whitelist');
+  if (isWhitelisted(host, whitelist)) return;
+
+  chrome.tabs.update(details.tabId, {
+    url: holdUrl({ target: details.url, trigger: 'NON_WHITELISTED_DOMAIN' }),
   });
-
-  if (!res.ok) {
-    throw new Error(`Request failed with status ${res.status}`);
-  }
-
-  return await res.json();
-}
-
-async function dispatchAlert(payload) {
-  try {
-    const data = await postToHono(ALERT_API_URL, payload);
-    console.log('[Background] Threat reported to Hono:', data);
-    return data;
-  } catch (err) {
-    console.error('[Background] Failed to send alert to Hono:', err);
-    return { error: err.message };
-  }
-}
-
-async function sendFormToHono(payload) {
-  try {
-    const formBody = new URLSearchParams(payload).toString();
-    const res = await fetch(FORM_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-      body: formBody
-    });
-
-    if (!res.ok) {
-      throw new Error(`Request failed with status ${res.status}`);
-    }
-
-    const data = await res.json();
-    console.log('[Background] Form sent to Hono:', data);
-    return { ok: true, data };
-  } catch (err) {
-    console.error('[Background] Failed to send form to Hono:', err);
-    return { ok: false, error: err.message };
-  }
-}
-
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.action === 'THREAT_DETECTED') {
-    dispatchAlert(message.payload).then((result) => {
-      sendResponse({ received: true, result });
-    });
-    return true;
-  }
-
-  if (message.action === 'SEND_TO_HONO') {
-    sendFormToHono(message.payload).then((result) => {
-      sendResponse(result);
-    });
-    return true;
-  }
-
-  return false;
 });
 
-if (chrome.downloads && chrome.downloads.onCreated) {
-  chrome.downloads.onCreated.addListener((downloadItem) => {
-    const dangerousPatterns = [/anydesk/i, /teamviewer/i, /rustdesk/i, /screenconnect/i];
-    const fileName = downloadItem.filename || '';
-    const match = dangerousPatterns.some((pattern) => pattern.test(fileName));
-
-    if (match) {
-      dispatchAlert({
-        threatType: 'DANGEROUS_REMOTE_TOOL_DOWNLOAD',
-        url: downloadItem.url,
-        phrase: fileName
-      });
-    }
+// Dangerous remote-access tool downloads are cancelled and sent for approval.
+chrome.downloads.onCreated.addListener(async (item) => {
+  if (!(await isProtected())) return;
+  if (!DANGEROUS_DOWNLOADS.some((re) => re.test(item.filename || item.url))) return;
+  chrome.downloads.cancel(item.id);
+  chrome.downloads.erase({ id: item.id });
+  chrome.tabs.create({
+    url: holdUrl({ target: item.finalUrl || item.url, trigger: 'DANGEROUS_REMOTE_TOOL_DOWNLOAD', kind: 'download' }),
   });
-}
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const run = async () => {
+    switch (message.action) {
+      case 'SCAM_CONTENT': {
+        // Fake tech-support pages are held even on otherwise-allowed domains.
+        const url = sender.tab?.url;
+        if (!sender.tab || !url || !(await isProtected()) || (await hasPass(url))) return {};
+        chrome.tabs.update(sender.tab.id, {
+          url: holdUrl({ target: url, trigger: 'FAKE_TECH_SUPPORT_POPUP', context: message.phrase }),
+        });
+        return {};
+      }
+      case 'CREATE_INTERVENTION':
+        return apiFetch('/api/interventions', { method: 'POST', body: message.payload });
+      case 'GET_INTERVENTION':
+        return apiFetch(`/api/interventions/${encodeURIComponent(message.id)}`);
+      case 'RELEASE':
+        await grantPass(message.target);
+        await refreshWhitelist().catch(() => {}); // picks up "always allow"
+        return {};
+      default:
+        return {};
+    }
+  };
+  run().then(sendResponse, (err) => sendResponse({ error: err.message }));
+  return true;
+});
+
+chrome.runtime.onStartup.addListener(() => refreshWhitelist().catch(() => {}));
