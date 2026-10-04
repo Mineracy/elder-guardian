@@ -23,6 +23,10 @@ jobs:
       - name: Install Dependencies
         working-directory: ./app
         run: npm install
+        
+      - name: Build Project
+        working-directory: ./app
+        run: npm run build
 
       - name: Run D1 Migrations
         uses: cloudflare/wrangler-action@v3
