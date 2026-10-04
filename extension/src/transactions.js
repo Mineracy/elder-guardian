@@ -104,6 +104,36 @@
   const labelOf = (el) => (el.innerText || el.value || el.getAttribute('aria-label') || el.title || '').trim();
   const fromOverlay = (e) => overlay && e.composedPath().includes(overlay.host);
 
+  function lockPaymentForm() {
+    const amountInputs = [...document.querySelectorAll('input, textarea, [contenteditable="true"]')].filter((input) => {
+      const type = (input.getAttribute('type') || 'text').toLowerCase();
+      if (SKIP_TYPES.has(type) || input.disabled || input.readOnly) return false;
+      const label = labelText(input);
+      return /amount|\bsum\b|dollar|\$|how much|payment|\bpay\b|transfer|\bsend\b|total|value/.test(label) || /enter amount/.test(label);
+    });
+
+    for (const input of amountInputs) {
+      input.value = '';
+      input.setAttribute('aria-disabled', 'true');
+      input.setAttribute('title', 'Payment blocked by Elder Guardian');
+      input.readOnly = true;
+      input.disabled = true;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    const paymentActions = [...document.querySelectorAll('button, input[type="submit"], input[type="button"], input[type="image"], [role="button"]')].filter((button) => {
+      const name = (button.innerText || button.value || button.getAttribute('aria-label') || '').trim().toLowerCase();
+      return /submit|pay|send|confirm|continue|transfer|deposit|withdraw/.test(name);
+    });
+
+    for (const button of paymentActions) {
+      button.disabled = true;
+      button.setAttribute('aria-disabled', 'true');
+      button.style.pointerEvents = 'none';
+      button.style.opacity = '0.5';
+    }
+  }
+
   function fmt(n) { return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' }); }
 
   function resume(kind, el, submitter) {
@@ -248,9 +278,13 @@
           return closed ? undefined : approve();
         }
         if (data.status === 'denied') {
+          lockPaymentForm();
+          const denyClose = () => { lockPaymentForm(); close(); };
+          cancel.onclick = denyClose;
+          cancel.textContent = 'Close';
           title.textContent = 'This payment was not approved';
           note.textContent = data.reason === 'no_trusted_contact' ? 'You have not added a trusted contact yet, so large payments are paused.' : 'It has not been sent. Here is what to look out for next time:';
-          spin.hidden = true; cancel.textContent = 'Close';
+          spin.hidden = true;
           return showEdu(data.userEducationMessage, true, 'How to spot this next time');
         }
         showEdu(data.userEducationMessage, false, 'While you wait');
