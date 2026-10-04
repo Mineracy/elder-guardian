@@ -24,7 +24,6 @@ jobs:
         working-directory: ./app
         run: npm install
 
-      # Optional: Automatically apply remote D1 migrations before deploying
       - name: Run D1 Migrations
         uses: cloudflare/wrangler-action@v3
         with:
@@ -32,6 +31,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'app'
           command: d1 migrations apply guardian --remote
+          wranglerVersion: 'latest'
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
@@ -40,3 +40,4 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'app'
           command: deploy
+          wranglerVersion: 'latest'
