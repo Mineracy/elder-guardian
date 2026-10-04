@@ -11,9 +11,9 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "guardian",
+      "database_name": "rowdy",
       // Replace with the id from `wrangler d1 create guardian` before deploying.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "a90f8ce4-8c9b-4e6e-823a-f50b54fe0c04",
       "migrations_dir": "migrations"
     }
   ],
