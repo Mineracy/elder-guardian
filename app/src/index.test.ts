@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import app from './index.js'
+import { analyzeThreat } from './gemini.js'
 
 type HealthJson = { ok: boolean; service: string }
 type JsonResult = { ok: boolean; service?: string; threat_level?: string; user_education_message?: string }
@@ -44,4 +45,36 @@ test('signup and alert pipeline work', async () => {
   assert.equal(alertRes.status, 201)
   assert.equal(alertJson.status, 'pending')
   assert.ok(alertJson.threat_level || alertJson.userEducationMessage || alertJson.user_education_message)
+})
+
+test('analyzeThreat accepts fenced json responses from Gemini', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '```json\n{\n  "threat_level": "HIGH",\n  "risk_summary": "This is a scam domain.",\n  "user_education_message": "You were paused because this page looked suspicious.",\n  "trusted_contact_alert": "Please review this suspicious site."\n}\n```',
+              },
+            ],
+          },
+        },
+      ],
+    })) as Response
+
+  try {
+    const result = await analyzeThreat({ GEMINI_API_KEY: 'valid-key' } as any, {
+      targetUrl: 'https://example.com',
+      domain: 'example.com',
+      triggerType: 'NON_WHITELISTED_DOMAIN',
+      protectedEmail: 'user@example.com',
+    })
+
+    assert.equal(result.usedFallback, false)
+    assert.equal(result.analysis.threat_level, 'HIGH')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })

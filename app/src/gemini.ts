@@ -50,23 +50,45 @@ export function fallbackAnalysis(ctx: InterventionContext): ThreatAnalysis {
   }
 }
 
-function parseAnalysis(text: string): ThreatAnalysis | null {
+function parseAnalysisText(rawText: string): ThreatAnalysis | null {
+  const text = rawText.trim()
+  if (!text) return null
+
+  const sanitized = (() => {
+    const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```\s*$/i)
+    if (fenced?.[1]) return fenced[1].trim()
+
+    const firstBrace = text.indexOf('{')
+    const lastBrace = text.lastIndexOf('}')
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      return text.slice(firstBrace, lastBrace + 1).trim()
+    }
+
+    return text
+  })()
+
   let data: Record<string, unknown>
   try {
-    data = JSON.parse(text)
+    data = JSON.parse(sanitized)
   } catch {
     return null
   }
+
   const level = String(data.threat_level ?? '').toUpperCase() as ThreatLevel
   const strings = ['risk_summary', 'user_education_message', 'trusted_contact_alert'] as const
   if (!THREAT_LEVELS.includes(level)) return null
   if (strings.some((k) => typeof data[k] !== 'string' || !(data[k] as string).trim())) return null
+
   return {
     threat_level: level,
     risk_summary: data.risk_summary as string,
     user_education_message: data.user_education_message as string,
     trusted_contact_alert: data.trusted_contact_alert as string,
   }
+}
+
+function parseAnalysis(text: string): ThreatAnalysis | null {
+  return parseAnalysisText(text)
 }
 
 export async function analyzeThreat(
@@ -108,7 +130,13 @@ export async function analyzeThreat(
     const body = (await res.json()) as {
       candidates?: { content?: { parts?: { text?: string }[] } }[]
     }
-    const analysis = parseAnalysis(body.candidates?.[0]?.content?.parts?.[0]?.text ?? '')
+
+    const candidateTexts = (body.candidates ?? [])
+      .flatMap((candidate) => candidate.content?.parts ?? [])
+      .map((part) => part.text)
+      .filter((text): text is string => typeof text === 'string' && text.trim().length > 0)
+
+    const analysis = candidateTexts.map(parseAnalysis).find((result): result is ThreatAnalysis => !!result) ?? null
     if (!analysis) throw new Error('Gemini returned an unusable response')
     return { analysis, usedFallback: false }
   } catch (err) {
