@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Elder Guardian",
   "version": "2.0.0",
-  "icons":{"128":"icon/guardian-icon.png"},
+  "icons":{"128":"guardian-icon.png"},
   "description": "Pauses risky links and asks a trusted contact to approve them, to protect against scams.",
   "permissions": ["storage", "downloads", "webNavigation", "tabs"],
   "host_permissions": [
