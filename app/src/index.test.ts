@@ -98,7 +98,7 @@ test('gemini debug endpoint returns a clear status payload', async () => {
     assert.equal(res.status, 400)
     assert.equal(json.ok, false)
     assert.match(json.message, /API key not valid|invalid|key/i)
-    assert.equal(json.model, 'gemini-3.8-flash')
+    assert.equal(json.model, 'gemini-3.5-flash-lite')
   } finally {
     globalThis.fetch = originalFetch
     if (originalApiKey === undefined) delete process.env.GEMINI_API_KEY

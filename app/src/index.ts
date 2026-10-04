@@ -32,7 +32,7 @@ app.get('/health', (c) => c.json({ ok: true, service: 'guardian-backend' }))
 
 app.get('/test', async (c) => {
   const key = c.env?.GEMINI_API_KEY ?? process.env.GEMINI_API_KEY
-  const model = c.env?.GEMINI_MODEL ?? process.env.GEMINI_MODEL ?? 'gemini-3.8-flash'
+  const model = c.env?.GEMINI_MODEL ?? process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite'
 
   if (!key) {
     return c.json(
