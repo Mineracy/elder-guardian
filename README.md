@@ -36,14 +36,15 @@ suspicious activity with Allow / Deny (+ "add to whitelist"), a view of their wh
 guardian". Guardians sign up on the site with the email the protected person entered, then confirm it via an emailed
 link (printed to the dev console without `RESEND_API_KEY`; the API also echoes `devVerifyUrl` in dev).
 
-Optional secrets in `app/.dev.vars` (never committed):
+Configuration lives in one git-ignored env file. Copy the template and fill in your keys:
+```sh
+cp app/.dev.vars.example app/.dev.vars
 ```
-GEMINI_API_KEY=...     # without it the Medium Risk fallback is used
-RESEND_API_KEY=...     # without it emails are printed to the dev console
-EMAIL_FROM=Guardian <guardian@your-domain>
-```
-With `ENVIRONMENT=dev` (default in `wrangler.jsonc`) the API also echoes `devReviewUrl`. **Remove it for production**,
-otherwise the protected person could approve their own requests.
+It holds `GEMINI_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `GEMINI_MODEL`, `APP_BASE_URL` and `ENVIRONMENT`; see the
+comments in `.dev.vars.example`. Everything is optional locally: without a Gemini key the Medium Risk fallback is
+used, without a Resend key emails are printed to the console. `ENVIRONMENT=dev` (set in the example) also echoes
+review/verification links in API responses. **Never set it in production**, otherwise the protected person could
+approve their own requests. Without the file nothing is echoed.
 
 ## Deploy
 ```sh
@@ -52,9 +53,10 @@ npx wrangler d1 create guardian        # put the id in wrangler.jsonc
 npm run db:migrate:remote
 npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put RESEND_API_KEY
+# plain settings (EMAIL_FROM, APP_BASE_URL, GEMINI_MODEL): Cloudflare dashboard > Worker > Settings > Variables
 npm run deploy                         # builds the site and deploys the single Worker
 ```
-Set `APP_BASE_URL` to the Worker URL and `ENVIRONMENT` to `production`, and update `extension/src/config.js` and
+Set `APP_BASE_URL` to the Worker URL (leave `ENVIRONMENT` unset), and update `extension/src/config.js` and
 `host_permissions` in `extension/manifest.json`.
 
 ## Design decisions

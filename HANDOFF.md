@@ -64,14 +64,14 @@ cd app && npm install
 npm run db:migrate:local
 npm run dev            # site + API on http://localhost:3000 (one process)
 ```
-Load `extension/` unpacked at `chrome://extensions` (Developer mode). Optional `app/.dev.vars`:
-`GEMINI_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`. With `ENVIRONMENT=dev` the API echoes `devReviewUrl` /
-`devVerifyUrl` and emails print to the console.
+Load `extension/` unpacked at `chrome://extensions` (Developer mode). Secrets/settings: `cp app/.dev.vars.example
+app/.dev.vars` and fill it in (git-ignored; all optional locally). With `ENVIRONMENT=dev` the API echoes
+`devReviewUrl` / `devVerifyUrl` and emails print to the console.
 
 ## Deploy
 `npx wrangler d1 create guardian` (put the id in `wrangler.jsonc`), `npm run db:migrate:remote`,
-`wrangler secret put GEMINI_API_KEY` / `RESEND_API_KEY`, set `APP_BASE_URL`, **set `ENVIRONMENT` to production**
-(otherwise the protected user can approve themselves via the echoed link), update `extension/src/config.js` and
+`wrangler secret put GEMINI_API_KEY` / `RESEND_API_KEY`, set `APP_BASE_URL`, **leave `ENVIRONMENT` unset**
+(`dev` would let the protected user approve themselves via the echoed link), update `extension/src/config.js` and
 `host_permissions` in `extension/manifest.json`, then `npm run deploy`.
 
 ## Design decisions worth keeping

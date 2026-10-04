@@ -17,11 +17,6 @@
       "migrations_dir": "migrations"
     }
   ],
-  "vars": {
-    // Public URL used in review links emailed to trusted contacts.
-    "APP_BASE_URL": "http://localhost:3000",
-    "ENVIRONMENT": "dev"
-  }
-  // Secrets (set with `wrangler secret put`, or in .dev.vars locally):
-  //   GEMINI_API_KEY, RESEND_API_KEY, EMAIL_FROM
+  // No "vars" here on purpose: secrets and per-environment settings come from `.dev.vars` locally
+  // (see .dev.vars.example) and from `wrangler secret put` / the dashboard in production.
 }
