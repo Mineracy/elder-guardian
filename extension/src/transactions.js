@@ -209,6 +209,7 @@
     const root = host.attachShadow({ mode: debug ? 'open' : 'closed' });
     const style = document.createElement('style');
     style.textContent = `
+      img{display:block;margin:0 auto 4px}
       .bg{position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}
       .card{background:#fff;color:#1f2937;max-width:480px;margin:16px;padding:28px;border-radius:18px;text-align:center;box-shadow:0 10px 40px #0006}
       h1{margin:6px 0 10px;font-size:24px} p{font-size:17px;line-height:1.5;margin:8px 0}
@@ -262,7 +263,12 @@
     const row = el('div', '', 'row');
     const cancel = button('Cancel the payment', close, true);
     row.append(cancel);
-    show(el('div', '🛡️', ''), title, note, spin, edu, row);
+    const logo = document.createElement('img');
+    logo.src = chrome.runtime.getURL('icons/icon-128.png');
+    logo.alt = 'Elder Guardian';
+    logo.width = logo.height = 64;
+    logo.addEventListener('error', () => logo.replaceWith(el('div', '🛡️', ''))); // e.g. a page that blocks extension images
+    show(logo, title, note, spin, edu, row);
 
     const fail = (message) => { title.textContent = "We couldn't reach Elder Guardian"; note.textContent = `${message}. For your safety this payment has not been sent.`; spin.hidden = true; cancel.textContent = 'Close'; };
     const showEdu = (text, warn, heading) => { eduTitle.textContent = heading; eduText.textContent = text; edu.className = warn ? 'edu warn' : 'edu'; edu.hidden = !text; };

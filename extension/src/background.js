@@ -18,10 +18,44 @@ const CONTENT_TRIGGERS = new Set([
 
 const WHITELIST_ALARM = 'whitelist-refresh';
 
-function holdUrl({ target, trigger, context, kind = 'navigate' }) {
+function holdUrl({ target, trigger, context, kind = 'navigate', back }) {
   const params = new URLSearchParams({ target, trigger, kind });
   if (context) params.set('context', context.slice(0, 300));
+  if (back) params.set('back', back); // where "Go back to safety" returns the person to
   return chrome.runtime.getURL(`src/hold.html?${params}`);
+}
+
+// Remembers the last two pages each tab committed, so "Go back to safety" can return the person to the
+// page they were on before the risky one (history.back() isn't reliable: a scam page that already loaded
+// would just be loaded, and held, again).
+let trailQueue = Promise.resolve();
+function recordCommit(tabId, url) {
+  trailQueue = trailQueue.then(async () => {
+    const { tabTrail = {} } = await chrome.storage.session.get('tabTrail');
+    const t = tabTrail[tabId];
+    if (t?.last === url) return;
+    tabTrail[tabId] = { prev: t?.last, last: url };
+    await chrome.storage.session.set({ tabTrail });
+  }).catch(() => {});
+  return trailQueue;
+}
+chrome.webNavigation.onCommitted.addListener((d) => {
+  if (d.frameId === 0 && /^https?:/.test(d.url)) recordCommit(d.tabId, d.url);
+});
+chrome.tabs.onRemoved.addListener((tabId) => {
+  trailQueue = trailQueue.then(async () => {
+    const { tabTrail = {} } = await chrome.storage.session.get('tabTrail');
+    if (tabId in tabTrail) { delete tabTrail[tabId]; await chrome.storage.session.set({ tabTrail }); }
+  }).catch(() => {});
+});
+
+// The page to send the person back to: the last page they were on, unless that is the held page itself.
+async function backTarget(tabId, heldUrl) {
+  await trailQueue;
+  const { tabTrail = {} } = await chrome.storage.session.get('tabTrail');
+  const t = tabTrail[tabId];
+  const back = t && t.last !== heldUrl ? t.last : t?.prev;
+  return back && /^https?:/.test(back) && back !== heldUrl ? back : undefined;
 }
 
 async function isBackendHost(host) {
@@ -58,7 +92,11 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   }
 
   chrome.tabs.update(details.tabId, {
-    url: holdUrl({ target: details.url, trigger: 'NON_WHITELISTED_DOMAIN' }),
+    url: holdUrl({
+      target: details.url,
+      trigger: 'NON_WHITELISTED_DOMAIN',
+      back: await backTarget(details.tabId, details.url),
+    }),
   });
 });
 
@@ -102,7 +140,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if ((await isBackendHost(hostOf(url))) || (await hasPass(url))) return {};
         const trigger = CONTENT_TRIGGERS.has(message.trigger) ? message.trigger : 'FAKE_TECH_SUPPORT_POPUP';
         chrome.tabs.update(sender.tab.id, {
-          url: holdUrl({ target: url, trigger, context: String(message.phrase || '') }),
+          url: holdUrl({
+            target: url,
+            trigger,
+            context: String(message.phrase || ''),
+            back: await backTarget(sender.tab.id, url),
+          }),
         });
         return {};
       }

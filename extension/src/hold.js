@@ -3,6 +3,7 @@ const params = new URLSearchParams(location.search);
 const target = params.get('target') || '';
 const trigger = params.get('trigger') || 'NON_WHITELISTED_DOMAIN';
 const kind = params.get('kind') || 'navigate';
+const back = params.get('back') || '';
 const storageKey = `interventionId:${target}`;
 
 const $ = (id) => document.getElementById(id);
@@ -11,9 +12,16 @@ const send = (message) =>
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 $('target').textContent = target;
-$('back').addEventListener('click', () => {
-  // Blocked pages never loaded, so "back" would just re-trigger the hold; start fresh instead.
-  chrome.tabs.update({ url: 'about:blank' });
+// Returns the person to the page they were on before (never to the blocked one). Downloads open in their
+// own tab, so that tab is simply closed. With no earlier page, fall back to a blank new-tab page.
+if (kind === 'download') $('back').textContent = 'Close this tab';
+$('back').addEventListener('click', async () => {
+  if (kind === 'download') {
+    const tab = await chrome.tabs.getCurrent();
+    return chrome.tabs.remove(tab.id);
+  }
+  if (/^https?:/.test(back)) return location.replace(back);
+  chrome.tabs.update({ url: 'chrome://newtab/' }).catch(() => chrome.tabs.update({ url: 'about:blank' }));
 });
 
 function showEducation(message, warn) {
