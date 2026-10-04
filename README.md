@@ -21,6 +21,24 @@ extension (listens) ──intercept──▶ backend (Hono + D1) ──email─�
 5. The extension polls: Allow releases the hold; Deny shows the educational message. Unanswered requests expire
    after 24h and count as denied.
 
+## What gets flagged
+The extension holds a page or download when it sees any of these (then the backend rates it and asks the guardian):
+- **Site not on the whitelist** (every top-level navigation to an unlisted domain).
+- **Page content**, on every site including allowed ones: fake tech-support lockouts, gift-card / crypto / wire payment
+  demands, fake government or police threats, fake prizes, "verify your account" pages with a password box, password or
+  card fields on an unencrypted (`http`) page, and card checkouts of $1,000 or more.
+- **Downloads**: remote-access tools (AnyDesk, TeamViewer, ...) anywhere, and program installers (`.exe`, `.msi`, `.dmg`, ...)
+  from sites that aren't whitelisted.
+
+The backend also runs **URL checks** (`app/src/signals.ts`): look-alike or brand-impersonating domains (`paypa1-...`),
+international look-alike characters, raw IP addresses, `@` tricks, link shorteners, free-hosting domains, suspicious
+endings (`.xyz`, `.top`, ...), login-style addresses, unencrypted links. These feed Gemini and set a **minimum threat
+level**, so a clear scam is never rated low, even if the AI is unavailable. Guardians see the red flags and whether the AI
+summary was a fallback.
+
+Guardians can **add and remove whitelist entries** from the dashboard; the extension picks changes up within about a
+minute (and immediately before it would block a site).
+
 ## Run locally
 One process serves everything: Vite runs the React site and the Hono Worker (with a local D1) on the same origin.
 ```sh
@@ -29,7 +47,13 @@ npm install
 npm run db:migrate:local
 npm run dev            # site + API on http://localhost:3000
 ```
-Load `extension/` via `chrome://extensions` → Developer mode → Load unpacked.
+Load `extension/` via `chrome://extensions` → Developer mode → Load unpacked. The extension talks to the deployed backend
+by default; to use your local one, run this in the extension's service-worker console (and `chrome.storage.local.remove('apiBase')`
+to switch back):
+```js
+chrome.storage.local.set({ apiBase: 'http://localhost:3000' })
+```
+Unit tests: `npm test` (in `app/`).
 
 The site (`app/client`) has a landing page and a login-gated **Elder Guardian dashboard**: per protected person, a log of
 suspicious activity with Allow / Deny (+ "add to whitelist"), a view of their whitelist, and "remove self as trusted
@@ -68,7 +92,6 @@ Set `APP_BASE_URL` to the Worker URL (leave `ENVIRONMENT` unset), and update `ex
 - All AI output is rendered as text (never HTML) and page content sent to Gemini is fenced as untrusted data.
 
 ## Known gaps
-- No rate limiting; sign-out in the popup isn't gated; large-payment / unsafe-email detection from the design notes
-  is not implemented yet (detection currently covers non-whitelisted domains, fake tech-support text, and
-  remote-access downloads); there is no flow for changing the trusted contact (after an Elder Guardian removes themselves, the protected person
-  can set a new one).
+- No rate limiting; popup sign-out isn't gated; "unsafe email" detection from the design notes isn't built (links clicked in
+  email are still held if their site isn't whitelisted); no flow for changing the trusted contact; `/test` is a public,
+  unauthenticated endpoint that spends Gemini quota; `src/index.test.ts` "signup and alert pipeline" needs a D1 binding and fails.

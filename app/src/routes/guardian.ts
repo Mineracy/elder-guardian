@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth'
+import { normalizeDomain } from '../domains'
 import { resolveIntervention } from '../resolve'
 import type { AppEnv } from '../types'
 
@@ -14,6 +15,15 @@ guardian.use('*', async (c, next) => {
   if (!user.email_verified) return c.json({ error: 'verify_email' }, 403)
   await next()
 })
+
+function parseSignals(raw: string | null): { code: string; label: string; severity: string }[] {
+  try {
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
 
 /** True when `protectedId` has paired this Elder Guardian's email. */
 async function isPaired(db: D1Database, protectedId: string, guardianEmail: string) {
@@ -39,20 +49,24 @@ guardian.get('/dashboard', async (c) => {
       const [activity, whitelist] = await Promise.all([
         db
           .prepare(
-            `SELECT id, target_url, domain, trigger_type, threat_level, risk_summary, status, created_at, expires_at
+            `SELECT id, target_url, domain, trigger_type, threat_level, risk_summary, status, created_at, expires_at,
+                    signals, used_fallback
              FROM intervention_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
           )
           .bind(p.id, ACTIVITY_LIMIT)
-          .all<{ status: string; expires_at: number }>(),
+          .all<{ status: string; expires_at: number; signals: string | null; used_fallback: number }>(),
         db
           .prepare('SELECT domain FROM whitelist_domains WHERE user_id = ? ORDER BY domain')
           .bind(p.id)
           .all<{ domain: string }>(),
       ])
       // Expired requests are effectively denied (see interventions.ts), so don't offer Allow on them.
-      const items = activity.results.map((a) =>
-        a.status === 'pending' && a.expires_at < now ? { ...a, status: 'denied' } : a,
-      )
+      const items = activity.results.map(({ signals, used_fallback, ...a }) => ({
+        ...a,
+        status: a.status === 'pending' && a.expires_at < now ? 'denied' : a.status,
+        signals: parseSignals(signals),
+        ai_fallback: used_fallback === 1,
+      }))
       return {
         id: p.id,
         email: p.email,
@@ -85,6 +99,38 @@ guardian.post('/interventions/:id/decision', async (c) => {
     body.addToWhitelist === true,
   )
   return c.json({ status })
+})
+
+/** Guardians curate the whitelist: it is the only way a site becomes trusted without a per-visit approval. */
+guardian.post('/protectees/:id/whitelist', async (c) => {
+  const db = c.env.DB
+  const protectedId = c.req.param('id')
+  if (!(await isPaired(db, protectedId, c.get('user').email))) return c.json({ error: 'Not found' }, 404)
+
+  const body = await c.req.json().catch(() => ({}))
+  const domain = normalizeDomain(String(body.domain ?? ''))
+  if (!domain) return c.json({ error: 'Enter a valid domain, like example.com' }, 400)
+
+  await db
+    .prepare('INSERT OR IGNORE INTO whitelist_domains (id, user_id, domain, created_at) VALUES (?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), protectedId, domain, Date.now())
+    .run()
+  return c.json({ ok: true, domain }, 201)
+})
+
+guardian.delete('/protectees/:id/whitelist/:domain', async (c) => {
+  const db = c.env.DB
+  const protectedId = c.req.param('id')
+  if (!(await isPaired(db, protectedId, c.get('user').email))) return c.json({ error: 'Not found' }, 404)
+
+  const domain = normalizeDomain(c.req.param('domain'))
+  if (!domain) return c.json({ error: 'Invalid domain' }, 400)
+
+  await db
+    .prepare('DELETE FROM whitelist_domains WHERE user_id = ? AND domain = ?')
+    .bind(protectedId, domain)
+    .run()
+  return c.json({ ok: true })
 })
 
 /** "Remove self as trusted guardian". */

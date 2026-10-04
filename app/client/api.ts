@@ -11,6 +11,9 @@ export type Activity = {
   risk_summary: string
   status: 'pending' | 'allowed' | 'denied'
   created_at: number
+  signals: { code: string; label: string; severity: 'MEDIUM' | 'HIGH' }[]
+  /** True when the AI was unavailable and a standard summary was used instead. */
+  ai_fallback: boolean
 }
 export type Protectee = {
   id: string
@@ -70,6 +73,16 @@ export const api = {
       method: 'POST',
       body: { decision, addToWhitelist },
     }),
+  addWhitelist: (protectedId: string, domain: string) =>
+    request<{ ok: boolean; domain: string }>(`/api/guardian/protectees/${protectedId}/whitelist`, {
+      method: 'POST',
+      body: { domain },
+    }),
+  removeWhitelist: (protectedId: string, domain: string) =>
+    request<{ ok: boolean }>(
+      `/api/guardian/protectees/${protectedId}/whitelist/${encodeURIComponent(domain)}`,
+      { method: 'DELETE' },
+    ),
   removeSelf: (protectedId: string) =>
     request<{ ok: boolean }>(`/api/guardian/protectees/${protectedId}`, { method: 'DELETE' }),
 }

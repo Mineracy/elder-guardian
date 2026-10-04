@@ -1,10 +1,22 @@
-import { API_BASE, resolveApiBase } from './config.js';
+import { resolveApiBase } from './config.js';
 import {
-  apiFetch, getSession, grantPass, hasPass, hostOf, isWhitelisted, refreshWhitelist,
+  apiFetch, getSession, grantPass, hasPass, hostOf, isWhitelisted, refreshWhitelist, WHITELIST_STALE_MS,
 } from './api.js';
 
-const DANGEROUS_DOWNLOADS = [/anydesk/i, /teamviewer/i, /rustdesk/i, /screenconnect/i];
-const BACKEND_HOST = hostOf(API_BASE);
+// Programs scammers talk people into installing so they can take over the computer.
+const REMOTE_TOOLS = [
+  /anydesk/i, /teamviewer/i, /rustdesk/i, /screenconnect/i, /connectwise/i, /ultraviewer/i, /supremo/i,
+  /splashtop/i, /ammyy/i, /logmein/i, /gotoassist/i, /remotepc/i, /aeroadmin/i, /zoho.?assist/i,
+];
+const INSTALLERS = /\.(exe|msi|scr|bat|cmd|apk|dmg|pkg|jar|vbs|ps1|iso|hta)(?:[?#]|$)/i;
+
+// Triggers the content script may report; anything else is ignored.
+const CONTENT_TRIGGERS = new Set([
+  'FAKE_TECH_SUPPORT_POPUP', 'GIFT_CARD_PAYMENT', 'GOV_IMPERSONATION_THREAT', 'PRIZE_OR_LOTTERY',
+  'ACCOUNT_VERIFICATION_PHISH', 'INSECURE_LOGIN_FORM', 'LARGE_PAYMENT_FORM',
+]);
+
+const WHITELIST_ALARM = 'whitelist-refresh';
 
 function holdUrl({ target, trigger, context, kind = 'navigate' }) {
   const params = new URLSearchParams({ target, trigger, kind });
@@ -12,9 +24,13 @@ function holdUrl({ target, trigger, context, kind = 'navigate' }) {
   return chrome.runtime.getURL(`src/hold.html?${params}`);
 }
 
-async function isProtected() {
-  const session = await getSession();
-  return session?.role === 'protected';
+async function isBackendHost(host) {
+  return !!host && host === hostOf(await resolveApiBase());
+}
+
+async function currentWhitelist() {
+  const { whitelist = [], whitelistFetchedAt = 0 } = await chrome.storage.local.get(['whitelist', 'whitelistFetchedAt']);
+  return { whitelist, stale: Date.now() - whitelistFetchedAt > WHITELIST_STALE_MS };
 }
 
 // Detection engine: any top-level navigation to a domain outside the whitelist is held.
@@ -22,45 +38,71 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   if (details.frameId !== 0 || !/^https?:/.test(details.url)) return;
 
   const session = await getSession();
-  if (!session || session.role !== 'protected') {
-    console.debug('[guardian] skipping block: not a protected session');
-    return;
-  }
+  if (!session || session.role !== 'protected') return;
 
   const host = hostOf(details.url);
-  const backendHost = hostOf(await resolveApiBase());
-  if (!host || host === backendHost) return;
+  if (!host || (await isBackendHost(host))) return; // never intercept the review/backend pages
   if (await hasPass(details.url)) return;
 
-  const { whitelist = [] } = await chrome.storage.local.get('whitelist');
+  let { whitelist, stale } = await currentWhitelist();
   if (isWhitelisted(host, whitelist)) return;
 
-  console.log('[guardian] holding blocked page', { url: details.url, host, trigger: 'NON_WHITELISTED_DOMAIN' });
+  // Before holding, make sure a guardian hasn't just added this site.
+  if (stale) {
+    try {
+      whitelist = (await refreshWhitelist()).map((d) => d.domain);
+    } catch {
+      /* offline or signed out: fall through to the cached list */
+    }
+    if (isWhitelisted(host, whitelist)) return;
+  }
+
   chrome.tabs.update(details.tabId, {
     url: holdUrl({ target: details.url, trigger: 'NON_WHITELISTED_DOMAIN' }),
   });
 });
 
-// Dangerous remote-access tool downloads are cancelled and sent for approval.
+// Risky downloads are cancelled and sent for approval: remote-access tools anywhere, and program
+// installers from sites that aren't on the whitelist.
 chrome.downloads.onCreated.addListener(async (item) => {
-  if (!(await isProtected())) return;
-  if (!DANGEROUS_DOWNLOADS.some((re) => re.test(item.filename || item.url))) return;
+  const session = await getSession();
+  if (!session || session.role !== 'protected') return;
+
+  const url = item.finalUrl || item.url;
+  if (!/^https?:/.test(url)) return;
+  if ((await hasPass(item.url)) || (await hasPass(url))) return; // already approved by the guardian
+
+  const host = hostOf(url);
+  if (!host || (await isBackendHost(host))) return;
+
+  const name = `${item.filename || ''} ${url}`;
+  let trigger = null;
+  if (REMOTE_TOOLS.some((re) => re.test(name))) {
+    trigger = 'DANGEROUS_REMOTE_TOOL_DOWNLOAD';
+  } else if (INSTALLERS.test(item.filename || '') || INSTALLERS.test(url)) {
+    const { whitelist } = await currentWhitelist();
+    if (!isWhitelisted(host, whitelist)) trigger = 'SUSPICIOUS_DOWNLOAD';
+  }
+  if (!trigger) return;
+
   chrome.downloads.cancel(item.id);
   chrome.downloads.erase({ id: item.id });
-  chrome.tabs.create({
-    url: holdUrl({ target: item.finalUrl || item.url, trigger: 'DANGEROUS_REMOTE_TOOL_DOWNLOAD', kind: 'download' }),
-  });
+  chrome.tabs.create({ url: holdUrl({ target: url, trigger, kind: 'download' }) });
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const run = async () => {
     switch (message.action) {
       case 'SCAM_CONTENT': {
-        // Fake tech-support pages are held even on otherwise-allowed domains.
+        // Scam-looking pages are held even on otherwise-allowed domains.
         const url = sender.tab?.url;
-        if (!sender.tab || !url || !(await isProtected()) || (await hasPass(url))) return {};
+        if (!sender.tab || !url || !/^https?:/.test(url)) return {};
+        const session = await getSession();
+        if (session?.role !== 'protected') return {};
+        if ((await isBackendHost(hostOf(url))) || (await hasPass(url))) return {};
+        const trigger = CONTENT_TRIGGERS.has(message.trigger) ? message.trigger : 'FAKE_TECH_SUPPORT_POPUP';
         chrome.tabs.update(sender.tab.id, {
-          url: holdUrl({ target: url, trigger: 'FAKE_TECH_SUPPORT_POPUP', context: message.phrase }),
+          url: holdUrl({ target: url, trigger, context: String(message.phrase || '') }),
         });
         return {};
       }
@@ -80,4 +122,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-chrome.runtime.onStartup.addListener(() => refreshWhitelist().catch(() => {}));
+// Keep the whitelist fresh so guardian edits (adds and removals) reach this browser within a minute.
+async function refreshIfProtected() {
+  const session = await getSession();
+  if (session?.role === 'protected') await refreshWhitelist().catch(() => {});
+}
+chrome.alarms.create(WHITELIST_ALARM, { periodInMinutes: 1 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === WHITELIST_ALARM) refreshIfProtected();
+});
+chrome.runtime.onStartup.addListener(refreshIfProtected);
+chrome.runtime.onInstalled.addListener(refreshIfProtected);

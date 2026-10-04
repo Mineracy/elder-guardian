@@ -1,10 +1,17 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { api, type Activity, type Protectee } from '../api'
 
 const TRIGGER_LABELS: Record<string, string> = {
   NON_WHITELISTED_DOMAIN: 'Site not on trusted list',
   FAKE_TECH_SUPPORT_POPUP: 'Fake tech-support page',
   DANGEROUS_REMOTE_TOOL_DOWNLOAD: 'Remote-access tool download',
+  SUSPICIOUS_DOWNLOAD: 'Risky program download',
+  GIFT_CARD_PAYMENT: 'Gift card / crypto payment request',
+  GOV_IMPERSONATION_THREAT: 'Fake government or police threat',
+  ACCOUNT_VERIFICATION_PHISH: 'Fake account-verification page',
+  PRIZE_OR_LOTTERY: 'Fake prize or lottery',
+  INSECURE_LOGIN_FORM: 'Password asked for on an unencrypted page',
+  LARGE_PAYMENT_FORM: 'Large payment',
 }
 
 function ActivityRow({ item, onChanged }: { item: Activity; onChanged: () => void }) {
@@ -36,6 +43,16 @@ function ActivityRow({ item, onChanged }: { item: Activity; onChanged: () => voi
       </div>
       <code className="url">{item.target_url}</code>
       <p className="summary">{item.risk_summary}</p>
+      {item.signals.length > 0 && (
+        <ul className="signals" aria-label="Red flags">
+          {item.signals.map((sig) => (
+            <li key={sig.code} className={`signal ${sig.severity}`}>{sig.label}</li>
+          ))}
+        </ul>
+      )}
+      {item.ai_fallback && (
+        <p className="muted small">AI analysis was unavailable, so this is a standard summary. Please check the link yourself.</p>
+      )}
       {item.status === 'pending' && (
         <>
           <div className="row">
@@ -55,7 +72,30 @@ function ActivityRow({ item, onChanged }: { item: Activity; onChanged: () => voi
 
 export default function ProtecteeCard({ person, onChanged }: { person: Protectee; onChanged: () => void }) {
   const [showWhitelist, setShowWhitelist] = useState(false)
+  const [newDomain, setNewDomain] = useState('')
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  async function editWhitelist(action: () => Promise<unknown>): Promise<boolean> {
+    setBusy(true)
+    setError('')
+    try {
+      await action()
+      onChanged()
+      return true
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update the whitelist')
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function addDomain(e: FormEvent) {
+    e.preventDefault()
+    if (!newDomain.trim()) return
+    if (await editWhitelist(() => api.addWhitelist(person.id, newDomain))) setNewDomain('')
+  }
 
   async function removeSelf() {
     if (!window.confirm(`Stop being ${person.email}'s trusted Elder Guardian? They'll no longer be able to get approvals from you.`)) return
@@ -99,9 +139,35 @@ export default function ProtecteeCard({ person, onChanged }: { person: Protectee
       {showWhitelist && (
         <div className="whitelist">
           <h3>Allowed sites ({person.whitelist.length})</h3>
-          <ul>
-            {person.whitelist.map((d) => <li key={d}>{d}</li>)}
-          </ul>
+          <form className="row add-domain" onSubmit={addDomain}>
+            <input
+              type="text"
+              aria-label="Domain to add"
+              placeholder="example.com"
+              value={newDomain}
+              onChange={(e) => setNewDomain(e.target.value)}
+            />
+            <button className="btn primary" disabled={busy || !newDomain.trim()}>Add</button>
+          </form>
+          {person.whitelist.length === 0 ? (
+            <p className="muted">Nothing is on the list yet, so every site will need your approval.</p>
+          ) : (
+            <ul className="whitelist-items">
+              {person.whitelist.map((d) => (
+                <li key={d}>
+                  <span>{d}</span>
+                  <button
+                    className="btn danger-ghost small-btn"
+                    disabled={busy}
+                    aria-label={`Remove ${d} from the whitelist`}
+                    onClick={() => editWhitelist(() => api.removeWhitelist(person.id, d))}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </section>

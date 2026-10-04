@@ -51,9 +51,15 @@ export async function signOut() {
   await chrome.storage.local.remove(['session', 'whitelist', 'passes']);
 }
 
+// Guardians can edit the whitelist at any time, so the local copy is refreshed regularly.
+export const WHITELIST_STALE_MS = 30 * 1000;
+
 export async function refreshWhitelist() {
   const { domains } = await apiFetch('/api/whitelist');
-  await chrome.storage.local.set({ whitelist: domains.map((d) => d.domain) });
+  await chrome.storage.local.set({
+    whitelist: domains.map((d) => d.domain),
+    whitelistFetchedAt: Date.now(),
+  });
   return domains;
 }
 

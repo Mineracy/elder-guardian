@@ -88,6 +88,14 @@ tech-support detection, popup); full Elder Guardian website flow in dev and the 
 gate, Allow/Deny, whitelist, remove self, mobile layout); fresh clone starts cleanly; TypeScript typechecks.
 **Not verified:** live Gemini call (no key; only the fallback ran), real email delivery, a real deployment.
 
+## Update: detection, whitelist editing, Gemini diagnostics
+- `app/src/signals.ts` (URL heuristics + per-trigger severity floors), richer `extension/src/content.js` detectors,
+  broader download checks. Guardians add/remove whitelist entries (`/api/guardian/protectees/:id/whitelist`).
+- Gemini: one shared client (`generateAnalysis` in `app/src/gemini.ts`) used by both `/test` and interventions; plain
+  schema, 15s timeout, retries, and `ai_error` stored per request (migration 0003) so failures are diagnosable.
+- `extension/src/config.js` now exports `resolveApiBase` (it was missing, which broke the extension). Local DB scripts use
+  the binding name `DB`. Run `npm test` in `app/`.
+
 ## Known gaps / next steps
 - Large-payment and unsafe-email detection from the original notes are not built (detection = non-whitelisted
   domain, fake tech-support text, remote-access downloads).
