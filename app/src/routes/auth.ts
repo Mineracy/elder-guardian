@@ -93,8 +93,7 @@ verify.get('/:token', async (c) => {
     db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').bind(row.user_id),
     db.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(row.user_id),
   ])
-  const web = c.env.WEB_URL
-  return web ? c.redirect(`${web}/dashboard?verified=1`) : c.html('<h1>Email confirmed. You can close this tab.</h1>')
+  return c.redirect('/dashboard?verified=1')
 })
 
 export default auth

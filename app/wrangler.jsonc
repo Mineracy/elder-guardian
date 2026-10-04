@@ -3,7 +3,11 @@
   "name": "guardian-backend",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-03",
-  "dev": { "port": 3000 },
+  // The React site is served by this same Worker; API/review/verify paths go to Hono first.
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/review/*", "/verify/*", "/health"]
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -16,8 +20,6 @@
   "vars": {
     // Public URL used in review links emailed to trusted contacts.
     "APP_BASE_URL": "http://localhost:3000",
-    // Origin of the React website (see ../web).
-    "WEB_URL": "http://localhost:5173",
     "ENVIRONMENT": "dev"
   }
   // Secrets (set with `wrangler secret put`, or in .dev.vars locally):

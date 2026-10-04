@@ -22,24 +22,19 @@ extension (listens) ──intercept──▶ backend (Hono + D1) ──email─�
    after 24h and count as denied.
 
 ## Run locally
+One process serves everything: Vite runs the React site and the Hono Worker (with a local D1) on the same origin.
 ```sh
 cd app
 npm install
 npm run db:migrate:local
-npm run dev            # http://localhost:3000
+npm run dev            # site + API on http://localhost:3000
 ```
 Load `extension/` via `chrome://extensions` → Developer mode → Load unpacked.
 
-Website (React + Vite, `web/`):
-```sh
-cd web
-npm install
-npm run dev            # http://localhost:5173 (set VITE_API_BASE, see .env.example)
-```
-The site has a landing page and a login-gated **guardian dashboard**: per protected person, a log of suspicious
-activity with Allow / Deny (+ "add to whitelist"), a view of their whitelist, and "remove self as trusted guardian".
-Guardians sign up on the site with the email the protected person entered, then confirm it via an emailed link
-(printed to the dev console without `RESEND_API_KEY`; the API also echoes `devVerifyUrl` in dev).
+The site (`app/client`) has a landing page and a login-gated **guardian dashboard**: per protected person, a log of
+suspicious activity with Allow / Deny (+ "add to whitelist"), a view of their whitelist, and "remove self as trusted
+guardian". Guardians sign up on the site with the email the protected person entered, then confirm it via an emailed
+link (printed to the dev console without `RESEND_API_KEY`; the API also echoes `devVerifyUrl` in dev).
 
 Optional secrets in `app/.dev.vars` (never committed):
 ```
@@ -52,12 +47,14 @@ otherwise the protected person could approve their own requests.
 
 ## Deploy
 ```sh
+cd app
 npx wrangler d1 create guardian        # put the id in wrangler.jsonc
 npm run db:migrate:remote
 npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put RESEND_API_KEY
+npm run deploy                         # builds the site and deploys the single Worker
 ```
-Set `APP_BASE_URL` to the Worker URL, `WEB_URL` to the deployed website origin (CORS + post-verification redirect), `ENVIRONMENT` to `production`, and update `extension/src/config.js` and
+Set `APP_BASE_URL` to the Worker URL and `ENVIRONMENT` to `production`, and update `extension/src/config.js` and
 `host_permissions` in `extension/manifest.json`.
 
 ## Design decisions

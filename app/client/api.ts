@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:3000'
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 const TOKEN_KEY = 'guardian.token'
 
 export type User = { id: string; email: string; role: 'protected' | 'trusted'; email_verified: number }
