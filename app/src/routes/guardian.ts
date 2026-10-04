@@ -12,8 +12,10 @@ guardian.use('*', requireAuth)
 guardian.use('*', async (c, next) => {
   const user = c.get('user')
   if (user.role !== 'trusted') return c.json({ error: 'Elder Guardian accounts only' }, 403)
-  // Without this, anyone could sign up with an Elder Guardian's address and approve scams.
-  if (!user.email_verified) return c.json({ error: 'verify_email' }, 403)
+  const isDashboardRead = c.req.method === 'GET' && c.req.path.endsWith('/dashboard')
+  // A trusted guardian should still be able to see pending requests in their dashboard before
+  // email verification, but approval actions must remain blocked until the email is confirmed.
+  if (!user.email_verified && !isDashboardRead) return c.json({ error: 'verify_email' }, 403)
   await next()
 })
 

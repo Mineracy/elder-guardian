@@ -6,7 +6,10 @@ export default function Header() {
   const navigate = useNavigate()
   return (
     <header className="site-header">
-      <Link to="/" className="brand">🛡️ Elder Guardian</Link>
+      <Link to="/" className="brand" aria-label="Elder Guardian home">
+        <img src="/guardian-icon.png" alt="" className="brand-icon" />
+        <span>Elder Guardian</span>
+      </Link>
       <nav>
         {user ? (
           <>

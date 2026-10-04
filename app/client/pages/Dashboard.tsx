@@ -10,7 +10,7 @@ export default function Dashboard() {
   const { user, refresh } = useAuth()
   const [params] = useSearchParams()
   const [protectees, setProtectees] = useState<Protectee[] | null>(null)
-  const [needsVerify, setNeedsVerify] = useState(!user?.email_verified)
+  const [needsVerify, setNeedsVerify] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
 
@@ -48,11 +48,12 @@ export default function Dashboard() {
     }
   }
 
-  if (needsVerify) {
-    return (
-      <main className="narrow">
-        <div className="card">
-          <h1>Confirm your email</h1>
+  return (
+    <main className="wide">
+      <h1>Your dashboard</h1>
+      {needsVerify && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h2>Confirm your email</h2>
           <p>
             Check <strong>{user?.email}</strong> for a confirmation link. We do this so only you can approve
             requests for the people you protect.
@@ -64,13 +65,7 @@ export default function Dashboard() {
             <button className="btn ghost" onClick={load}>I’ve confirmed it</button>
           </div>
         </div>
-      </main>
-    )
-  }
-
-  return (
-    <main className="wide">
-      <h1>Your dashboard</h1>
+      )}
       {params.get('verified') && <p className="alert">Thanks, your email is confirmed.</p>}
       {error && <p className="alert error" role="alert">{error}</p>}
       {protectees === null ? (
