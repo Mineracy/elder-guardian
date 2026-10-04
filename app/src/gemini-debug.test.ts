@@ -9,7 +9,7 @@ test('gemini debug endpoint returns a clear status payload', async () => {
   const originalModel = process.env.GEMINI_MODEL
 
   process.env.GEMINI_API_KEY = 'test-key'
-  process.env.GEMINI_MODEL = 'gemini-2.5-flash'
+  process.env.GEMINI_MODEL = 'gemini-3.8-flash'
 
   globalThis.fetch = async () =>
     new Response(JSON.stringify({ error: { message: 'API key not valid' } }), { status: 400 }) as Response
@@ -21,7 +21,7 @@ test('gemini debug endpoint returns a clear status payload', async () => {
     assert.equal(res.status, 400)
     assert.equal(json.ok, false)
     assert.match(json.message, /API key not valid|invalid|key/i)
-    assert.equal(json.model, 'gemini-2.5-flash')
+    assert.equal(json.model, 'gemini-3.8-flash')
   } finally {
     globalThis.fetch = originalFetch
     if (originalApiKey === undefined) delete process.env.GEMINI_API_KEY
