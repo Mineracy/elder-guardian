@@ -87,7 +87,7 @@ function parseAnalysisText(rawText: string): ThreatAnalysis | null {
   }
 }
 
-function parseAnalysis(text: string): ThreatAnalysis | null {
+export function parseAnalysis(text: string): ThreatAnalysis | null {
   return parseAnalysisText(text)
 }
 
